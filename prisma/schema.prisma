@@ -1,0 +1,137 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql" // Switched from postgresql to mysql
+}
+
+// ==========================================
+// ENUMS (Strict State Machine & RBAC)
+// ==========================================
+
+enum Role {
+  Requesting_Office
+  Business_Office
+  Admin_Office
+  Purchasing_Office
+  Receiving_Custodian
+  Global_Auditor
+}
+
+enum PRStatus {
+  Draft
+  Pending_Business_Approval
+  Returned_for_Correction
+  Pending_Admin_Approval
+  Approved_Awaiting_PO
+  Awaiting_Check_Issuance
+  Ready_for_Purchase
+  Received_and_Closed
+  Declined
+}
+
+enum ConditionNote {
+  Good
+  Damaged
+}
+
+// ==========================================
+// ENTITIES
+// ==========================================
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique
+  users     User[]
+  prs       PurchaseRequest[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  passwordHash String
+  role         Role
+  departmentId String
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  auditLogs    AuditLog[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([role])
+  @@index([departmentId])
+}
+
+model PurchaseRequest {
+  id                  String       @id @default(uuid())
+  departmentId        String
+  department          Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  creatorId           String
+  
+  itemsPayload        Json         // Handled natively as JSON type in modern MySQL (5.7.8+)
+  justification       String       @db.Text
+  status              PRStatus     @default(Draft)
+  isDirectPoBypass    Boolean      @default(false)
+  adminProofFilePath  String?      
+  
+  purchaseOrders      PurchaseOrder[]
+  auditLogs           AuditLog[]
+
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([status])
+  @@index([departmentId])
+}
+
+model PurchaseOrder {
+  id                  String       @id @default(uuid())
+  poNumber            String       @unique
+  purchaseRequestId   String
+  purchaseRequest     PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Restrict)
+  
+  isCheckIssued       Boolean      @default(false)
+  
+  receivingReports    ReceivingReport[]
+  
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([purchaseRequestId])
+}
+
+model ReceivingReport {
+  id                  String       @id @default(uuid())
+  purchaseOrderId     String
+  purchaseOrder       PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  
+  condition           ConditionNote
+  invoiceFilePath     String
+  remarks             String?      @db.Text
+  
+  createdAt           DateTime     @default(now())
+
+  @@index([purchaseOrderId])
+}
+
+model AuditLog {
+  id                  String       @id @default(uuid())
+  prId                String
+  purchaseRequest     PurchaseRequest @relation(fields: [prId], references: [id], onDelete: Cascade)
+  actorId             String
+  actor               User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  
+  previousState       PRStatus?    
+  newState            PRStatus
+  remarks             String?      @db.Text
+  
+  createdAt           DateTime     @default(now())
+
+  @@index([prId])
+  @@index([actorId])
+}
