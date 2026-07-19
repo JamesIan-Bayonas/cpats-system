@@ -1,14 +1,12 @@
+// File Path: src/validation/business.schema.ts
 import { z } from 'zod';
 
-export const ReviewPRSchema = z.object({
-  prId: z.string().uuid({ message: "Target purchase request identifier must be a valid UUIDv4 string." }),
-  action: z.enum(['SUBMIT', 'APPROVE', 'DECLINE', 'RETURN_FOR_CORRECTION'], {
-    errorMap: () => ({ message: "Invalid workflow mutation vector specified." })
+export const BusinessEvaluationSchema = z.object({
+  prId: z.string().uuid("Invalid format. Purchase request tracking identifier must be a valid UUIDv4."),
+  action: z.enum(['APPROVE', 'DECLINE', 'RETURN_FOR_CORRECTION'], {
+    message: "Action must be strictly bounded to APPROVE, DECLINE, or RETURN_FOR_CORRECTION."
   }),
-  remarks: z.string().min(10, { 
-    message: "Audit trace compliance requires an explanatory remark of at least 10 characters." 
-  }),
-  adminProofFilePath: z.string().url({ message: "Proof of physical authorization must be a valid file storage URI path." }).optional()
+  remarks: z.string().min(5, "Audit compliance requires remarks to be at least 5 characters long to preserve trail transparency.")
 });
 
-export type ReviewPRInput = z.infer<typeof ReviewPRSchema>;
+export type BusinessEvaluationInput = z.infer<typeof BusinessEvaluationSchema>;

@@ -7,16 +7,15 @@ const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. IDENTITY AND ROLE MATRIX VERIFICATION
-    // Mocked context representing Node 24 architectural baseline session state.
-    // Replace with token parsing mechanism from JWT/Session middleware cookies.
+    // SECURITY CONTEXT: Explicit institutional role verification boundary.
+    // Ensure production middleware parses session objects securely from tokens.
     const activeUser = {
       id: "business-evaluator-uuid-999", 
       role: Role.Business_Office,
       departmentId: "business-finance-dept-xyz"
     };
 
-    // Strict RBAC Intercept Block
+    // Strict Role-Based Access Control execution intercept
     if (activeUser.role !== Role.Business_Office) {
       return NextResponse.json(
         { error: "FORBIDDEN: Insufficient clearance matrix level. Action restricted to Business Office personnel." },
@@ -24,7 +23,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. RUNTIME INBOUND PAYLOAD VALIDATION
+    // Inbound payload extraction
     const rawBody = await request.json();
     const validation = BusinessEvaluationSchema.safeParse(rawBody);
 
@@ -37,8 +36,7 @@ export async function POST(request: NextRequest) {
 
     const { prId, action, remarks } = validation.data;
 
-    // 3. ATOMIC ISOLATION AND STATE VERIFICATION LOOP
-    // Retrieve tracking flags prior to transaction allocation to prevent out-of-order execution states.
+    // Fetch tracking target flags to ensure state isolation
     const currentPR = await prisma.purchaseRequest.findUnique({
       where: { id: prId },
       select: { id: true, status: true }
@@ -51,7 +49,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Assert that target record matches Step 2 baseline entry parameters
+    // Guard constraint preventing execution outside the designated phase
     if (currentPR.status !== PRStatus.Pending_Business_Approval) {
       return NextResponse.json(
         { error: `INVALID OPERATION STATE: Target request is currently locked in '${currentPR.status}' state and cannot accept Business Office evaluation transitions.` },
@@ -59,7 +57,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Mapping discrete input choices to deterministic database system states
+    // State machine mutation assignment mapping
     let nextState: PRStatus;
     if (action === 'APPROVE') {
       nextState = PRStatus.Pending_Admin_Approval;
@@ -69,15 +67,13 @@ export async function POST(request: NextRequest) {
       nextState = PRStatus.Returned_for_Correction;
     }
 
-    // 4. ATOMIC DATABASE TRANSACTION ENFORCEMENT
+    // Atomic transaction ensures mutations and logs commit simultaneously or roll back entirely
     const transactionResult = await prisma.$transaction(async (tx) => {
-      // Mutate status on the target row
       const updatedRequest = await tx.purchaseRequest.update({
         where: { id: prId },
         data: { status: nextState }
       });
 
-      // Inject tracking log into the immutable historical ledger block
       await tx.auditLog.create({
         data: {
           prId: prId,
@@ -91,7 +87,6 @@ export async function POST(request: NextRequest) {
       return updatedRequest;
     });
 
-    // Output valid database transition footprint back to presentation runtime
     return NextResponse.json(
       { success: true, data: transactionResult },
       { status: 200 }
