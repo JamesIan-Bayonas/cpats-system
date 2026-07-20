@@ -1,0 +1,13 @@
+// .vscode/settings.json
+{
+  "files.watcherExclude": {
+    "**/AppData/Local/Temp/**": true,
+    "**/.next/**": true,
+    "**/node_modules/**": true
+  },
+  "search.exclude": {
+    "**/AppData/Local/Temp/**": true,
+    "**/.next/**": true,
+    "**/node_modules/**": true
+  }
+}
