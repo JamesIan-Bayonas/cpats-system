@@ -1,15 +1,14 @@
-// File Path: src/app/api/pr/evaluate-business/route.ts
+// src/app/api/pr/evaluate-business/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, PRStatus, Role } from '@prisma/client';
+import { PRStatus, Role } from '@prisma/client';
+import { prisma } from '@/shared/prisma'; // Architectural Realignment: Enforcing Custom Driver Adapter Context
 import { BusinessEvaluationSchema } from '@/validation/business.schema';
-
-const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
     // SECURITY CONTEXT: Explicit institutional role verification boundary.
-    // Ensure production middleware parses session objects securely from tokens.
-    const activeUser = {
+    // Explicit type signature applied to prevent literal type narrowing down to a single enum state
+    const activeUser: { id: string; role: Role; departmentId: string } = {
       id: "business-evaluator-uuid-999", 
       role: Role.Business_Office,
       departmentId: "business-finance-dept-xyz"

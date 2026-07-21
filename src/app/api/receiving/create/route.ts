@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     // 3. ATOMIC ACID TRANSACTION SEGMENT
     const transactionResult = await prisma.$transaction(async (tx) => {
-      // Pessimistically load target Purchase Order record
+      // Pessimistically load target Purchase Order record`
       const targetPO = await tx.purchaseOrder.findUnique({
         where: { id: purchaseOrderId },
         include: { purchaseRequest: true }

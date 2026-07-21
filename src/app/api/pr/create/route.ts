@@ -1,21 +1,18 @@
 // src/app/api/pr/create/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, PRStatus, Role } from '@prisma/client';
+import { PRStatus, Role } from '@prisma/client';
+import { prisma } from '@/shared/prisma';
 import { CreatePRSchema } from '@/validation/pr.schema';
-
-const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. SECURITY CONTEXT (Mocked session management for Node 24 baseline)
-    // In production, parse these details securely from your JWT/Session cookie
+    // SECURITY REALIGNMENT: Mapped to deterministic database rows
     const activeUser = {
-      id: "user-uuid-from-session-123", 
+      id: "6a2f7b1e-3c9d-4e5f-a6b7-8c9d0e1f2a3b", 
       role: Role.Requesting_Office,
-      departmentId: "some-department-uuid-abc" // e.g., CCS Department
+      departmentId: "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"
     };
 
-    // RBAC Authorization Block
     if (activeUser.role !== Role.Requesting_Office) {
       return NextResponse.json(
         { error: "Unauthorized. Only Requesting Offices can initiate a purchase request." },
@@ -23,7 +20,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. PARSE AND VALIDATE PAYLOAD
     const rawBody = await request.json();
     const validation = CreatePRSchema.safeParse(rawBody);
 
@@ -35,18 +31,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { justification, isDirectPoBypass, items } = validation.data;
+    const initialStatus = isDirectPoBypass ? PRStatus.Approved_Awaiting_PO : PRStatus.Draft;
 
-    // 3. DETERMINISTIC STATE ENGINE MATCHING THE ARCHITECTURAL MANDATE
-    // If Direct PO Bypass is true, it skips directly to Approved_Awaiting_PO.
-    // Otherwise, it starts safely in the Draft state.
-    const initialStatus = isDirectPoBypass 
-      ? PRStatus.Approved_Awaiting_PO 
-      : PRStatus.Draft;
-
-    // 4. ACID-COMPLIANT DATABASE TRANSACTION
     const executionResult = await prisma.$transaction(async (tx) => {
-      
-      // Create the core Purchase Request record
       const newPR = await tx.purchaseRequest.create({
         data: {
           departmentId: activeUser.departmentId,
@@ -54,17 +41,15 @@ export async function POST(request: NextRequest) {
           justification: justification,
           isDirectPoBypass: isDirectPoBypass,
           status: initialStatus,
-          // MySQL saves this directly as a binary native JSON field types safely
           itemsPayload: items, 
         },
       });
 
-      // Append initial tracking marker to the Immutable Ledger
       await tx.auditLog.create({
         data: {
           prId: newPR.id,
           actorId: activeUser.id,
-          previousState: null, // No state before creation
+          previousState: null,
           newState: initialStatus,
           remarks: isDirectPoBypass 
             ? "PR initialized using Executive Authorization Document. System steps bypassed."
@@ -75,17 +60,10 @@ export async function POST(request: NextRequest) {
       return newPR;
     });
 
-    // Return the cleanly formed entity back to our React application layout
-    return NextResponse.json(
-      { success: true, data: executionResult },
-      { status: 201 }
-    );
+    return NextResponse.json({ success: true, data: executionResult }, { status: 201 });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("CRITICAL BACKEND FAILURE:", error);
-    return NextResponse.json(
-      { error: "Internal Server Execution Failure" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal Server Execution Failure" }, { status: 500 });
   }
 }

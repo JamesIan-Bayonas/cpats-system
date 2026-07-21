@@ -7,9 +7,9 @@ import { ReleaseCheckSchema } from '@/validation/check.schema';
 export async function POST(request: NextRequest) {
   try {
     // 1. ROLE-BASED ACCESS CONTROL GATEKEEPING
-    // Explicit type signature applied to prevent literal type narrowing down to a single string value
+    // Aligned to the seeded Business Office User ID to satisfy foreign key constraints
     const activeUser: { id: string; role: Role; departmentId: string } = {
-      id: "finance-officer-uuid-111",
+      id: "business-evaluator-uuid-999",
       role: Role.Business_Office,
       departmentId: "business-finance-dept-xyz"
     };
