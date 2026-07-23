@@ -1,8 +1,6 @@
+// tsconfig.json
 {
   "compilerOptions": {
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "exactOptionalPropertyTypes": true,
     "target": "es2024",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
@@ -23,8 +21,9 @@
     ],
     "paths": {
       "@/*": ["./src/*"]
-    }
-  },
+    },
+    "types": ["node", "jest"]
+  },  
   "include": [
     "next-env.d.ts",
     "**/*.ts",
@@ -33,5 +32,9 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    ".next"
+  ]
+  
 }

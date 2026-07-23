@@ -3,7 +3,6 @@ import { defineConfig } from '@prisma/config';
 import * as dotenv from 'dotenv';
 import { resolve } from 'path';
 
-// Force load the .env file from the absolute root directory path
 dotenv.config({ path: resolve(process.cwd(), '.env') });
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -15,5 +14,9 @@ if (!databaseUrl) {
 export default defineConfig({
   datasource: {
     url: databaseUrl,
+  },
+  migrations: {
+    // Realignment to enforce tsx compilation context inside modern ESM modules
+    seed: 'npx tsx ./prisma/seed.ts',
   },
 });

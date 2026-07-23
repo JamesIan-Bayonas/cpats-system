@@ -62,7 +62,7 @@ model User {
   auditLogs    AuditLog[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
-
+  
   @@index([role])
   @@index([departmentId])
 }
@@ -72,16 +72,13 @@ model PurchaseRequest {
   departmentId        String
   department          Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   creatorId           String
-  
   itemsPayload        Json         // Handled natively as JSON type in modern MySQL (5.7.8+)
   justification       String       @db.Text
   status              PRStatus     @default(Draft)
   isDirectPoBypass    Boolean      @default(false)
   adminProofFilePath  String?      
-  
   purchaseOrders      PurchaseOrder[]
   auditLogs           AuditLog[]
-
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
@@ -90,31 +87,28 @@ model PurchaseRequest {
 }
 
 model PurchaseOrder {
-  id                  String       @id @default(uuid())
-  poNumber            String       @unique
-  purchaseRequestId   String
-  purchaseRequest     PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Restrict)
-  
-  isCheckIssued       Boolean      @default(false)
-  
-  receivingReports    ReceivingReport[]
-  
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  id                String            @id @default(uuid())
+  poNumber          String            @unique
+  purchaseRequestId String
+  purchaseRequest   PurchaseRequest   @relation(fields: [purchaseRequestId], references: [id], onDelete: Restrict)
+  qrCodeToken       String            @unique
+  isCheckIssued     Boolean           @default(false)
+  receivingReports  ReceivingReport[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   @@index([purchaseRequestId])
 }
 
 model ReceivingReport {
-  id                  String       @id @default(uuid())
+  id                  String        @id @default(uuid())
   purchaseOrderId     String
   purchaseOrder       PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  
   condition           ConditionNote
   invoiceFilePath     String
-  remarks             String?      @db.Text
-  
-  createdAt           DateTime     @default(now())
+  asssetImageFilePath String        
+  remarks             String?       @db.Text
+  createdAt           DateTime      @default(now())
 
   @@index([purchaseOrderId])
 }
@@ -125,11 +119,9 @@ model AuditLog {
   purchaseRequest     PurchaseRequest @relation(fields: [prId], references: [id], onDelete: Cascade)
   actorId             String
   actor               User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
-  
   previousState       PRStatus?    
   newState            PRStatus
   remarks             String?      @db.Text
-  
   createdAt           DateTime     @default(now())
 
   @@index([prId])
