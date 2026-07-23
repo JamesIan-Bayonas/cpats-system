@@ -1,4 +1,3 @@
-// .vscode/settings.json
 {
   "files.watcherExclude": {
     "**/AppData/Local/Temp/**": true,
