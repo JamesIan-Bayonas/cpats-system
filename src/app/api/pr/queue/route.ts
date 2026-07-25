@@ -1,11 +1,15 @@
-// src/app/api/pr/queue/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Role, PRStatus } from '@prisma/client';
 import { prisma } from '@/shared/prisma';
 import { QueueFetchSchema } from '@/validation/queue.schema';
+import { authorizeRequest } from '@/shared/rbac';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await authorizeRequest(request, Object.values(Role));
+    if (!auth.success) return auth.response;
+    const activeUser = auth.user;
+
     const rawBody = await request.json();
     const validation = QueueFetchSchema.safeParse(rawBody);
 
@@ -17,11 +21,16 @@ export async function POST(request: NextRequest) {
     }
 
     const { role, departmentId } = validation.data;
-    
-    // Fallback static configuration matching deterministic seed context
-    const targetedDepartmentId = departmentId || "f81d4fae-7dec-11d0-a765-00a0c91e6bf6";
 
-    // Dynamic filtering execution based on state-machine matrix placements
+    if (activeUser.role !== Role.Global_Auditor && activeUser.role !== role) {
+      return NextResponse.json(
+        { success: false, error: `FORBIDDEN: User role '${activeUser.role}' cannot access queue for '${role}'.` },
+        { status: 403 }
+      );
+    }
+
+    const targetedDepartmentId = departmentId || activeUser.departmentId;
+
     switch (role) {
       case Role.Requesting_Office:
         const regionalRequests = await prisma.purchaseRequest.findMany({
@@ -32,7 +41,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, data: regionalRequests }, { status: 200 });
 
       case Role.Business_Office:
-        // Fetches requests awaiting operational review or check issuance logs
         const businessQueue = await prisma.purchaseRequest.findMany({
           where: {
             status: {
@@ -64,7 +72,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, data: purchasingQueue }, { status: 200 });
 
       case Role.Receiving_Custodian:
-        // Returns active purchase tracking tokens ready for physical intake scans
         const receivingQueue = await prisma.purchaseOrder.findMany({
           where: {
             purchaseRequest: { status: PRStatus.Ready_for_Purchase },
@@ -85,7 +92,6 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
     }
-
   } catch (error: unknown) {
     console.error("QUEUE ACQUISITION ENGINE CRASH:", error);
     return NextResponse.json(

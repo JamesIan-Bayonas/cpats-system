@@ -1,41 +1,27 @@
-// src/app/api/pr/evaluate-business/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { PRStatus, Role } from '@prisma/client';
-import { prisma } from '@/shared/prisma'; // Architectural Realignment: Enforcing Custom Driver Adapter Context
+import { prisma } from '@/shared/prisma';
 import { BusinessEvaluationSchema } from '@/validation/business.schema';
+import { authorizeRequest } from '@/shared/rbac';
 
 export async function POST(request: NextRequest) {
   try {
-    // SECURITY CONTEXT: Explicit institutional role verification boundary.
-    // Explicit type signature applied to prevent literal type narrowing down to a single enum state
-    const activeUser: { id: string; role: Role; departmentId: string } = {
-      id: "business-evaluator-uuid-999", 
-      role: Role.Business_Office,
-      departmentId: "business-finance-dept-xyz"
-    };
+    const auth = await authorizeRequest(request, Role.Business_Office);
+    if (!auth.success) return auth.response;
+    const activeUser = auth.user;
 
-    // Strict Role-Based Access Control execution intercept
-    if (activeUser.role !== Role.Business_Office) {
-      return NextResponse.json(
-        { error: "FORBIDDEN: Insufficient clearance matrix level. Action restricted to Business Office personnel." },
-        { status: 403 }
-      );
-    }
-
-    // Inbound payload extraction
     const rawBody = await request.json();
     const validation = BusinessEvaluationSchema.safeParse(rawBody);
 
     if (!validation.success) {
       return NextResponse.json(
-        { errors: validation.error.format() },
+        { success: false, errors: validation.error.format() },
         { status: 422 }
       );
     }
 
     const { prId, action, remarks } = validation.data;
 
-    // Fetch tracking target flags to ensure state isolation
     const currentPR = await prisma.purchaseRequest.findUnique({
       where: { id: prId },
       select: { id: true, status: true }
@@ -43,20 +29,18 @@ export async function POST(request: NextRequest) {
 
     if (!currentPR) {
       return NextResponse.json(
-        { error: "NOT FOUND: Target purchase request could not be located within persistent relational tables." },
+        { success: false, error: "NOT FOUND: Target purchase request could not be located." },
         { status: 404 }
       );
     }
 
-    // Guard constraint preventing execution outside the designated phase
     if (currentPR.status !== PRStatus.Pending_Business_Approval) {
       return NextResponse.json(
-        { error: `INVALID OPERATION STATE: Target request is currently locked in '${currentPR.status}' state and cannot accept Business Office evaluation transitions.` },
+        { success: false, error: `INVALID OPERATION STATE: Target request is currently in '${currentPR.status}' status.` },
         { status: 400 }
       );
     }
 
-    // State machine mutation assignment mapping
     let nextState: PRStatus;
     if (action === 'APPROVE') {
       nextState = PRStatus.Pending_Admin_Approval;
@@ -66,7 +50,6 @@ export async function POST(request: NextRequest) {
       nextState = PRStatus.Returned_for_Correction;
     }
 
-    // Atomic transaction ensures mutations and logs commit simultaneously or roll back entirely
     const transactionResult = await prisma.$transaction(async (tx) => {
       const updatedRequest = await tx.purchaseRequest.update({
         where: { id: prId },
@@ -86,16 +69,9 @@ export async function POST(request: NextRequest) {
       return updatedRequest;
     });
 
-    return NextResponse.json(
-      { success: true, data: transactionResult },
-      { status: 200 }
-    );
-
-  } catch (error: any) {
-    console.error("CRITICAL REQUISITION SYSTEM TRACE FAILURE:", error);
-    return NextResponse.json(
-      { error: "CRITICAL STORAGE CORE ERROR: Execution failure encountered during atomic state mutation parsing." },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true, data: transactionResult }, { status: 200 });
+  } catch (error: unknown) {
+    console.error("CRITICAL REQUISITION EVALUATION FAILURE:", error);
+    return NextResponse.json({ success: false, error: "Critical Execution Fault during state mutation." }, { status: 500 });
   }
 }

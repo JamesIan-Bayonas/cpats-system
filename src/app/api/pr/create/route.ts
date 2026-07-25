@@ -1,31 +1,21 @@
-// src/app/api/pr/create/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { PRStatus, Role } from '@prisma/client';
 import { prisma } from '@/shared/prisma';
 import { CreatePRSchema } from '@/validation/pr.schema';
+import { authorizeRequest } from '@/shared/rbac';
 
 export async function POST(request: NextRequest) {
   try {
-    // SECURITY REALIGNMENT: Mapped to deterministic database rows
-    const activeUser = {
-      id: "6a2f7b1e-3c9d-4e5f-a6b7-8c9d0e1f2a3b", 
-      role: Role.Requesting_Office,
-      departmentId: "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"
-    };
-
-    if (activeUser.role !== Role.Requesting_Office) {
-      return NextResponse.json(
-        { error: "Unauthorized. Only Requesting Offices can initiate a purchase request." },
-        { status: 403 }
-      );
-    }
+    const auth = await authorizeRequest(request, Role.Requesting_Office);
+    if (!auth.success) return auth.response;
+    const activeUser = auth.user;
 
     const rawBody = await request.json();
     const validation = CreatePRSchema.safeParse(rawBody);
 
     if (!validation.success) {
       return NextResponse.json(
-        { errors: validation.error.format() },
+        { success: false, errors: validation.error.format() },
         { status: 422 }
       );
     }
@@ -41,7 +31,7 @@ export async function POST(request: NextRequest) {
           justification: justification,
           isDirectPoBypass: isDirectPoBypass,
           status: initialStatus,
-          itemsPayload: items, 
+          itemsPayload: items,
         },
       });
 
@@ -51,7 +41,7 @@ export async function POST(request: NextRequest) {
           actorId: activeUser.id,
           previousState: null,
           newState: initialStatus,
-          remarks: isDirectPoBypass 
+          remarks: isDirectPoBypass
             ? "PR initialized using Executive Authorization Document. System steps bypassed."
             : "Purchase request initialized successfully in Draft mode.",
         },
@@ -61,9 +51,8 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ success: true, data: executionResult }, { status: 201 });
-
   } catch (error: unknown) {
     console.error("CRITICAL BACKEND FAILURE:", error);
-    return NextResponse.json({ error: "Internal Server Execution Failure" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Internal Server Execution Failure" }, { status: 500 });
   }
 }
