@@ -7,39 +7,38 @@
   --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), monospace;
 
-  /* Institutional Color System: AEGIS-UI Enterprise Palette */
-  --color-palmyra-950: #022c22;
-  --color-palmyra-900: #064e3b;
-  --color-palmyra-800: #065f46;
-  --color-palmyra-700: #047857;
+  /* Institutional Color System: DMCCFI Emerald */
+  --color-dmc-950: #022c22;
+  --color-dmc-900: #064e3b;
+  --color-dmc-800: #065f46;
+  --color-dmc-700: #047857; /* primary brand accent */
+  --color-dmc-600: #059669;
 
-  --color-foam-100: #ecfdf5;
-  --color-foam-200: #d1fae5;
-  --color-foam-300: #a7f3d0;
+  --color-dmc-foam-50: #ecfdf5;
+  --color-dmc-foam-100: #d1fae5;
+  --color-dmc-foam-200: #a7f3d0;
 
-  --color-stone-50: #fafaf9;
-  --color-stone-100: #f5f5f4;
-  --color-stone-200: #e7e5e4;
-  --color-stone-300: #d6d3d1;
-  --color-stone-400: #a8a29e;
-  --color-stone-500: #78716c;
-  --color-stone-600: #57534e;
-  --color-stone-700: #44403c;
-  --color-stone-800: #292524;
-  --color-stone-900: #1c1917;
-  --color-stone-950: #0c0a09;
+  /* Neutral canvas ramp (slate, matches Tailwind defaults used across pages) */
+  --color-dmc-slate-50: #f8fafc;
+  --color-dmc-slate-100: #f1f5f9;
+  --color-dmc-slate-200: #e2e8f0;
+  --color-dmc-slate-400: #94a3b8;
+  --color-dmc-slate-500: #64748b;
+  --color-dmc-slate-700: #334155;
+  --color-dmc-slate-900: #0f172a;
 }
 
+/*
+ * Intentionally light-only. This is an institutional audit/compliance
+ * portal — the design system is not built for a dark variant, and letting
+ * prefers-color-scheme flip the canvas produces a broken half-dark UI.
+ * If a real dark mode is ever wanted, it needs its own token pass rather
+ * than inheriting the OS preference.
+ */
 :root {
-  --background: #f5f5f4;
-  --foreground: #1c1917;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0c0a09;
-    --foreground: #fafaf9;
-  }
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  color-scheme: light;
 }
 
 body {
@@ -47,14 +46,14 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   min-height: 100vh;
-  letter-spacing: -0.014em;
+  letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Dense Data Scrollbar Architecture */
+/* Data-grid scrollbar styling, tuned for a light canvas */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -62,12 +61,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #a8a29e;
-  border-radius: 2px;
+  background: #cbd5e1;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #78716c;
+  background: #94a3b8;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -76,4 +75,10 @@ body {
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Consistent visible focus ring across the app for accessibility */
+:focus-visible {
+  outline: 2px solid var(--color-dmc-600, #059669);
+  outline-offset: 2px;
 }

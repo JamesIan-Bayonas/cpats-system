@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 /* ---------------------------------------------------------------- */
 
 export function PageShell({ children }: { children: React.ReactNode }) {
-  return <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">{children}</main>;
+  return <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">{children}</main>;
 }
 
 export function StageHeader({
@@ -27,16 +27,16 @@ export function StageHeader({
   return (
     <Card className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
       <div>
-        <span className="inline-block text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full uppercase tracking-wide">
+        <span className="inline-block text-[10px] font-bold font-mono text-emerald-800 bg-emerald-100/60 border border-emerald-200/80 px-2.5 py-1 rounded-md uppercase tracking-wide">
           {eyebrow}
         </span>
-        <h2 className="text-xl font-bold text-slate-900 tracking-tight mt-3">{title}</h2>
+        <h2 className="text-2xl font-bold text-slate-900 tracking-tight mt-2.5">{title}</h2>
         <p className="text-sm text-slate-500 mt-1 max-w-xl leading-relaxed">{description}</p>
       </div>
       {meta && (
         <div className="text-left sm:text-right shrink-0">
-          <span className="text-[11px] text-slate-400 block uppercase tracking-wide">{meta.label}</span>
-          <span className="text-xs font-mono font-bold text-slate-700 bg-slate-50 px-3 py-1 rounded-lg border border-slate-200 inline-block mt-1">
+          <span className="text-[11px] font-bold text-slate-400 block uppercase tracking-wider">{meta.label}</span>
+          <span className="text-xs font-mono font-bold text-slate-700 bg-slate-50 px-3 py-1 rounded-md border border-slate-200 inline-block mt-1">
             {meta.value}
           </span>
         </div>
@@ -57,7 +57,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={`bg-white border border-slate-200 rounded-xl shadow-sm p-6 ${className}`}>
+    <div className={`bg-white border border-slate-200/80 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.04),0_1px_2px_-1px_rgba(0,0,0,0.02)] p-6 transition-all duration-150 ${className}`}>
       {children}
     </div>
   );
@@ -69,8 +69,8 @@ export function Card({
 
 export function ErrorBanner({ children }: { children: React.ReactNode }) {
   return (
-    <div className="p-4 bg-rose-50 border-l-4 border-rose-500 rounded-r-lg text-rose-700 text-sm font-medium flex items-start gap-2">
-      <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div className="p-4 bg-rose-50 border-l-4 border-rose-500 rounded-r-lg text-rose-800 text-sm font-medium flex items-start gap-2.5">
+      <svg className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
       <span>{children}</span>
@@ -80,8 +80,8 @@ export function ErrorBanner({ children }: { children: React.ReactNode }) {
 
 export function SuccessBanner({ children }: { children: React.ReactNode }) {
   return (
-    <div className="p-4 bg-emerald-50 border-l-4 border-emerald-600 rounded-r-lg text-emerald-800 text-sm font-medium flex items-start gap-2">
-      <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div className="p-4 bg-emerald-50 border-l-4 border-emerald-600 rounded-r-lg text-emerald-900 text-sm font-medium flex items-start gap-2.5">
+      <svg className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
       </svg>
       <span>{children}</span>
@@ -94,8 +94,8 @@ const STATUS_STYLES: Record<string, string> = {
   approved: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   declined: 'bg-rose-50 text-rose-800 border-rose-200',
   returned: 'bg-orange-50 text-orange-800 border-orange-200',
-  draft: 'bg-slate-100 text-slate-600 border-slate-200',
-  neutral: 'bg-slate-100 text-slate-600 border-slate-200',
+  draft: 'bg-slate-100 text-slate-700 border-slate-200',
+  neutral: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 export function StatusPill({
@@ -106,7 +106,7 @@ export function StatusPill({
   children: React.ReactNode;
 }) {
   return (
-    <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase border ${STATUS_STYLES[tone]}`}>
+    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase border ${STATUS_STYLES[tone]}`}>
       {children}
     </span>
   );
@@ -118,19 +118,19 @@ export function StatusPill({
 
 export function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
+    <label className="block text-[13px] font-semibold text-slate-800 tracking-normal mb-1.5">
       {children}
     </label>
   );
 }
 
 export function FieldError({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs text-rose-600 mt-1.5">{children}</p>;
+  return <p className="text-xs text-rose-600 font-medium mt-1.5">{children}</p>;
 }
 
 export const inputClass = (hasError?: boolean) =>
-  `w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-sm text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-600 focus:border-transparent outline-none transition placeholder:text-slate-400 ${
-    hasError ? 'border-rose-400' : 'border-slate-200'
+  `w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20 outline-none transition-colors duration-150 ease-in-out ${
+    hasError ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300'
   }`;
 
 export function CheckItem({
@@ -149,7 +149,7 @@ export function CheckItem({
   return (
     <label
       htmlFor={id}
-      className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 transition cursor-pointer"
+      className="flex items-start gap-3 p-4 rounded-lg border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors duration-150 cursor-pointer"
     >
       <input
         id={id}
@@ -159,7 +159,7 @@ export function CheckItem({
         className="h-4 w-4 mt-0.5 accent-emerald-700 rounded cursor-pointer"
       />
       <span className="text-sm">
-        <span className="font-semibold text-slate-800">{label}</span>
+        <span className="font-semibold text-slate-900">{label}</span>
         {description && <span className="block text-xs text-slate-500 mt-0.5 leading-relaxed">{description}</span>}
       </span>
     </label>
@@ -197,7 +197,7 @@ export function ReviewWorkspace({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
       <Card className="lg:col-span-1">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-3">{queueTitle}</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">{queueTitle}</h3>
 
         {loading ? (
           <div className="p-4 text-center text-sm text-slate-400">Loading…</div>
@@ -212,14 +212,14 @@ export function ReviewWorkspace({
                 key={task.id}
                 type="button"
                 onClick={() => onSelect(task.id)}
-                className={`w-full text-left p-3 rounded-lg border transition ${
+                className={`w-full text-left p-3 rounded-lg border transition-all duration-150 cursor-pointer ${
                   selectedId === task.id
-                    ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600'
+                    ? 'border-emerald-700 bg-emerald-50/60 ring-1 ring-emerald-700'
                     : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                 }`}
               >
                 <div className="flex justify-between items-center mb-1">
-                  <span className="font-mono text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                  <span className="font-mono text-[11px] font-bold text-emerald-800 bg-emerald-100/80 border border-emerald-200 px-1.5 py-0.5 rounded">
                     {task.subtitle}
                   </span>
                   <span className="text-[11px] text-slate-400">{task.dateLabel}</span>
@@ -250,7 +250,7 @@ export function DecisionButtonGroup({
   returnLabel?: string;
   declineLabel?: string;
 }) {
-  const base = 'py-3 text-sm font-semibold rounded-lg border transition';
+  const base = 'h-11 py-0 px-3 text-sm font-semibold rounded-lg border transition-all duration-150 active:scale-[0.99] flex items-center justify-center cursor-pointer';
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <button
@@ -297,7 +297,7 @@ export function DecisionButtonGroup({
 type ButtonVariant = 'primary' | 'outline' | 'danger' | 'ghost';
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
-  primary: 'bg-emerald-700 hover:bg-emerald-800 text-white disabled:bg-slate-300',
+  primary: 'bg-emerald-700 hover:bg-emerald-800 text-white disabled:bg-slate-300 shadow-sm',
   outline: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 disabled:opacity-50',
   danger: 'bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 disabled:opacity-50',
   ghost: 'bg-transparent hover:bg-slate-100 text-slate-600',
@@ -312,19 +312,17 @@ export function ActionButton({
   return (
     <button
       {...props}
-      className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition active:scale-[0.98] disabled:active:scale-100 ${BUTTON_STYLES[variant]} ${className}`}
+      className={`h-11 px-6 rounded-lg text-sm font-semibold transition-all duration-150 active:scale-[0.99] disabled:active:scale-100 inline-flex items-center justify-center gap-2 cursor-pointer ${BUTTON_STYLES[variant]} ${className}`}
     >
       {children}
     </button>
   );
 }
 
-/* Append these to the bottom of src/components/ui/WorkflowUI.tsx */
+/* ---------------------------------------------------------------- */
+/* Standalone Logout & Guard Cards                                  */
+/* ---------------------------------------------------------------- */
 
-/**
- * Reusable Standalone Logout Button.
- * Can be embedded inside modals, cards, or restriction screens.
- */
 export function LogoutButton({
   variant = 'outline',
   className = '',
@@ -360,11 +358,6 @@ export function LogoutButton({
   );
 }
 
-/**
- * Standardized Access Restricted Guard Card.
- * Renders when a user attempts to access a page outside their RBAC role,
- * featuring an embedded Sign Out button so users never get stuck.
- */
 export function AccessRestrictedCard({ role }: { role?: string }) {
   return (
     <Card className="max-w-md w-full text-center mx-auto my-12 space-y-4">
