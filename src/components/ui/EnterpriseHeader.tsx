@@ -1,87 +1,151 @@
-// File: src/components/ui/EnterpriseHeader.tsx
+// src/components/ui/EnterpriseHeader.tsx
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Role } from '@prisma/client';
 
 interface EnterpriseHeaderProps {
-  activeRole: Role;
-  departmentCode: string;
+  activeRole?: Role;
+  departmentCode?: string;
 }
 
-export default function EnterpriseHeader({ activeRole, departmentCode }: EnterpriseHeaderProps) {
-  const pathname = usePathname();
+interface NavigationStep {
+  name: string;
+  number: string;
+  href: string;
+  allowedRoles: Role[];
+}
 
-  const navigationSteps = [
-    { name: '01. Init PR', href: '/dashboard/pr/new', role: Role.Requesting_Office },
-    { name: '02. Business Eval', href: '/dashboard/pr/evaluate-business', role: Role.Business_Office },
-    { name: '03. Admin Sign-Off', href: '/dashboard/pr/approve-admin', role: Role.Admin_Office },
-    { name: '04-A. PO Generation', href: '/dashboard/po/new', role: Role.Purchasing_Office },
-    { name: '04-B. Check Release', href: '/dashboard/po/release-check', role: Role.Business_Office },
-    { name: '05. Cargo Intake', href: '/dashboard/receiving/new', role: Role.Receiving_Custodian },
-    { name: 'Audit Console', href: '/dashboard/audit', role: Role.Global_Auditor },
+const ROLE_LABELS: Record<string, string> = {
+  Requesting_Office: 'Requesting Office',
+  Business_Office: 'Business Office',
+  Admin_Office: 'Admin Office',
+  Purchasing_Office: 'Purchasing Office',
+  Receiving_Custodian: 'Receiving Custodian',
+  Global_Auditor: 'Global Auditor',
+};
+
+export default function EnterpriseHeader({ activeRole: propRole, departmentCode: propCode }: EnterpriseHeaderProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [sessionUser, setSessionUser] = useState<{ email: string; role: Role; departmentCode: string } | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          setSessionUser(res.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      setSigningOut(true);
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/login');
+      router.refresh();
+    } catch (err) {
+      console.error('Logout error:', err);
+      setSigningOut(false);
+    }
+  };
+
+  const displayRole = sessionUser?.role || propRole || Role.Requesting_Office;
+  const displayCode = sessionUser?.departmentCode || propCode || 'CCS';
+  const roleLabel = ROLE_LABELS[displayRole] ?? String(displayRole).replace(/_/g, ' ');
+  const initial = roleLabel.charAt(0);
+
+  // Define workflow routes and their permitted roles (client-side safe)
+  const navigationSteps: NavigationStep[] = [
+    { name: 'Init PR', number: '01', href: '/dashboard/pr/new', allowedRoles: [Role.Requesting_Office] },
+    { name: 'Business Eval', number: '02', href: '/dashboard/pr/evaluate-business', allowedRoles: [Role.Business_Office] },
+    { name: 'Admin Sign-Off', number: '03', href: '/dashboard/pr/approve-admin', allowedRoles: [Role.Admin_Office] },
+    { name: 'PO Generation', number: '04A', href: '/dashboard/po/new', allowedRoles: [Role.Purchasing_Office] },
+    { name: 'Check Release', number: '04B', href: '/dashboard/po/release-check', allowedRoles: [Role.Business_Office] },
+    { name: 'Cargo Intake', number: '05', href: '/dashboard/receiving/new', allowedRoles: [Role.Receiving_Custodian] },
+    { name: 'Audit Console', number: '06', href: '/dashboard/audit', allowedRoles: [Role.Global_Auditor] },
   ];
 
+  // Filter navigation steps authorized for the active user's role
+  const authorizedSteps = navigationSteps.filter((step) =>
+    step.allowedRoles.includes(displayRole)
+  );
+
   return (
-    <header className="sticky top-0 z-50 bg-stone-950 border-b border-stone-800 text-stone-100 shadow-lg">
+    <header className="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-2xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 border-b border-stone-900">
-          
-          <div className="flex items-center space-x-3.5">
-            <div className="h-9 w-9 rounded-md bg-emerald-950 border border-emerald-700/80 flex items-center justify-center shadow-inner">
-              <span className="font-mono font-black text-emerald-400 text-xs tracking-tight">DMC</span>
+        
+        {/* Top Identity Bar */}
+        <div className="flex items-center justify-between h-16">
+          <Link href="/dashboard" className="flex items-center space-x-3 group">
+            <div className="h-9 w-9 rounded-lg bg-emerald-700 flex items-center justify-center shadow-sm group-hover:bg-emerald-800 transition-colors">
+              <span className="font-bold text-white text-xs tracking-tight">DMC</span>
             </div>
-            <div>
+            <div className="hidden sm:block">
               <div className="flex items-center space-x-2">
-                <h1 className="text-xs font-bold tracking-wider text-stone-100 uppercase font-mono">
-                  CPATS Procurement Control Node
-                </h1>
-                <span className="text-[9px] font-mono font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800/80 px-1.5 py-0.5 rounded">
-                  3NF Verified
+                <h1 className="text-sm font-bold tracking-tight text-slate-900">CPATS</h1>
+                <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                  Session Active
                 </span>
               </div>
-              <p className="text-[10px] text-stone-400 font-mono tracking-tight mt-0.5">
-                Institutional Audit Compliance Infrastructure // Mr. Lugo, CPA
+              <p className="text-[11px] text-slate-400 -mt-0.5">
+                Campus Procurement Automation &amp; Tracking System
               </p>
             </div>
-          </div>
+          </Link>
 
-          <div className="flex items-center space-x-6">
-            <div className="text-right">
-              <span className="text-[9px] font-mono text-stone-500 uppercase tracking-widest block">
-                Session Scope
-              </span>
-              <div className="flex items-center space-x-2 mt-0.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="font-mono text-xs font-bold text-emerald-300 tracking-tight">
-                  {activeRole.replace(/_/g, ' ')} [{departmentCode}]
-                </span>
+          {/* User Session Info & Sign Out Button */}
+          <div className="flex items-center space-x-4">
+            <div className="hidden md:flex items-center space-x-2.5 pr-4 border-r border-slate-200">
+              <div className="h-8 w-8 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center">
+                <span className="text-xs font-bold text-emerald-700">{initial}</span>
+              </div>
+              <div className="text-left">
+                <span className="block text-xs font-bold text-slate-800 leading-tight">{roleLabel}</span>
+                <span className="block text-[11px] text-slate-400 leading-tight">{displayCode} Department</span>
               </div>
             </div>
-          </div>
 
+            <button
+              onClick={handleLogout}
+              disabled={signingOut}
+              className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-lg transition-colors disabled:opacity-50 active:scale-95 cursor-pointer"
+            >
+              {signingOut ? 'Signing out…' : 'Sign Out'}
+            </button>
+          </div>
         </div>
 
-        <nav className="flex space-x-1 overflow-x-auto py-2 no-scrollbar">
-          {navigationSteps.map((step) => {
-            const isActive = pathname === step.href;
-            return (
-              <Link
-                key={step.href}
-                href={step.href}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-mono transition-all border ${
-                  isActive
-                    ? 'bg-emerald-900/90 text-emerald-200 border-emerald-600/80 font-bold shadow-xs'
-                    : 'text-stone-400 border-transparent hover:text-stone-200 hover:bg-stone-900'
-                }`}
-              >
-                {step.name}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* Workflow Stage Tabs - Rendered ONLY if the user has MULTIPLE authorized routes (e.g., Business Office) */}
+        {authorizedSteps.length > 1 && (
+          <nav className="flex space-x-1.5 overflow-x-auto pb-3 no-scrollbar" aria-label="Procurement workflow stages">
+            {authorizedSteps.map((step) => {
+              const isActive = pathname === step.href;
+              return (
+                <Link
+                  key={step.href}
+                  href={step.href}
+                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                    isActive
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold shadow-2xs'
+                      : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`font-mono text-[10px] ${isActive ? 'text-emerald-600' : 'text-slate-300'}`}>
+                    {step.number}
+                  </span>
+                  {step.name}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
 
       </div>
     </header>
