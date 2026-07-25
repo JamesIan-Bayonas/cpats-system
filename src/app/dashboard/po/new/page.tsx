@@ -4,6 +4,21 @@
 import React, { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Role, PRStatus } from '@prisma/client';
+import { AuthUser } from '@/shared/session';
+import {
+  PageShell,
+  StageHeader,
+  Card,
+  ErrorBanner,
+  SuccessBanner,
+  FieldLabel,
+  FieldError,
+  inputClass,
+  CheckItem,
+  ReviewWorkspace,
+  ActionButton,
+  QueueTask,
+} from '@/components/ui/WorkflowUI';
 
 interface ZodSubErrors {
   _errors?: string[];
@@ -19,81 +34,74 @@ interface ApprovedPRQueueNode {
   justification: string;
   status: PRStatus;
   createdAt: string;
-  department: {
-    code: string;
-    name: string;
-  };
+  department: { code: string; name: string };
 }
 
 export default function NewPurchaseOrderPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  // 1. AUTHORITATIVE CONTEXT REGISTRY (Explicit Type Widening Applied)
-  const activeUser: { id: string; role: Role; departmentId: string } = {
-    id: "purchaser-uuid-static-888",
-    role: Role.Purchasing_Office,
-    departmentId: "purchasing-dept-uuid-wxy"
-  };
+  const [activeUser, setActiveUser] = useState<AuthUser | null>(null);
+  const [userLoading, setUserLoading] = useState<boolean>(true);
 
-  // 2. RUNTIME WORKSPACE STATE
   const [purchaseRequestId, setPurchaseRequestId] = useState<string>('');
   const [poNumber, setPoNumber] = useState<string>('');
-  
-  // Custom Interface Operational Checkbox
   const [custodyConfirmed, setCustodyConfirmed] = useState<boolean>(false);
 
-  // Live Task Queue States
   const [purchasingQueue, setPurchasingQueue] = useState<ApprovedPRQueueNode[]>([]);
   const [queueLoading, setQueueLoading] = useState<boolean>(true);
 
-  // Error/Success Interception Hydration
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<ZodFormErrors | null>(null);
   const [transactionSuccess, setTransactionSuccess] = useState<string | null>(null);
 
-  // 3. LEDGER QUEUE SYNCHRONIZATION RUNTIME
-  const syncPurchasingQueue = async () => {
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          setActiveUser(res.data);
+          syncPurchasingQueue(res.data.role);
+        }
+      })
+      .catch(() => setRuntimeError('Failed to load session context. Please refresh.'))
+      .finally(() => setUserLoading(false));
+  }, []);
+
+  const syncPurchasingQueue = async (userRole: Role) => {
     try {
       const response = await fetch('/api/pr/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: Role.Purchasing_Office })
+        body: JSON.stringify({ role: userRole }),
       });
       const resData = await response.json();
       if (response.ok) {
-        // Enforce state verification filter boundary
         const activeTasks = (resData.data || []).filter(
           (item: ApprovedPRQueueNode) => item.status === PRStatus.Approved_Awaiting_PO
         );
         setPurchasingQueue(activeTasks);
       }
     } catch (err) {
-      console.error("Purchasing workspace connection pool error:", err);
+      console.error('Queue sync failed:', err);
     } finally {
       setQueueLoading(false);
     }
   };
 
-  useEffect(() => {
-    syncPurchasingQueue();
-  }, []);
-
-  // 4. SYSTEM MUTATION DISPATCH LAYER
   const handlePurchaseOrderGeneration = async (e: React.FormEvent) => {
     e.preventDefault();
     setRuntimeError(null);
     setValidationErrors(null);
     setTransactionSuccess(null);
 
-    // Context Control Gate
-    if (activeUser.role !== Role.Purchasing_Office) {
-      setRuntimeError("CRITICAL ACCESS VIOLATION: Access denied. System node restricts manipulation to authorized Purchasers.");
+    if (!activeUser || activeUser.role !== Role.Purchasing_Office) {
+      setRuntimeError('Access denied. Only Purchasing Office accounts can generate POs.');
       return;
     }
 
     if (!custodyConfirmed) {
-      setRuntimeError("COMPLIANCE EXCEPTION: Legal control and custody affirmation must be acknowledged before processing records.");
+      setRuntimeError('You must confirm custody and preparation of the hard copy before proceeding.');
       return;
     }
 
@@ -102,10 +110,7 @@ export default function NewPurchaseOrderPage() {
         const response = await fetch('/api/po/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            purchaseRequestId,
-            poNumber
-          }),
+          body: JSON.stringify({ purchaseRequestId, poNumber }),
         });
 
         const result = await response.json();
@@ -113,172 +118,126 @@ export default function NewPurchaseOrderPage() {
         if (!response.ok) {
           if (response.status === 422 && result.errors) {
             setValidationErrors(result.errors);
-            throw new Error("Validation Guard Triggered: Verify input parameter syntax.");
+            throw new Error('Please check the highlighted fields below.');
           }
-          throw new Error(result.error || "A database engine interrupt aborted token creation.");
+          throw new Error(result.error || 'A system error occurred while generating the PO.');
         }
 
-        setTransactionSuccess(`Authoritative binding achieved. Purchase Order Reference [${poNumber}] logged. Requisition state moved to Awaiting Check Issuance.`);
+        setTransactionSuccess(`Purchase Order [${poNumber}] successfully generated and bound to request.`);
         
-        // Purge field variables
         setPurchaseRequestId('');
         setPoNumber('');
         setCustodyConfirmed(false);
         
-        // Re-hydrate local records and clean system caches
-        await syncPurchasingQueue();
+        await syncPurchasingQueue(activeUser.role);
         router.refresh();
-
       } catch (err: any) {
-        setRuntimeError(err.message || "A hardware pipeline interrupt blocked network execution vectors.");
+        setRuntimeError(err.message || 'Something went wrong. Please try again.');
       }
     });
   };
 
-  return (
-    <div className="max-w-6xl mx-auto p-6 my-8 font-sans text-slate-900">
-      
-      {/* Workflow Navigation Header Context Panel */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-6 flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">Step 4-A: Purchase Order Generation Matrix</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Department Ledger Anchor: <span className="font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200 font-bold uppercase">{activeUser.role.replace(/_/g, ' ')}</span>
-          </p>
-        </div>
-        <div className="text-right">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ecosystem Asset Registry</span>
-          <span className="text-xs font-semibold text-indigo-600">Deterministic Procurement Pipeline</span>
-        </div>
+  if (userLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
+        Loading your session…
       </div>
+    );
+  }
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        
-        {/* LEFT COLUMN: ACTIVE REQUISITIONS QUEUE */}
-        <div className="lg:col-span-1 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3">Approved Requests Awaiting PO</h3>
-          
-          {queueLoading ? (
-            <div className="p-4 text-center text-xs font-medium text-slate-400 animate-pulse">Syncing system transactions...</div>
-          ) : purchasingQueue.length === 0 ? (
-            <div className="p-4 text-center text-xs font-medium text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50">
-              Queue Clear: No approved requisitions await structural document mapping[cite: 1].
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-              {purchasingQueue.map((task) => (
-                <div
-                  key={task.id}
-                  onClick={() => setPurchaseRequestId(task.id)}
-                  className={`p-3 rounded-lg border text-left cursor-pointer transition-all hover:border-slate-400 hover:bg-slate-50/50
-                    ${purchaseRequestId === task.id ? 'border-slate-900 bg-slate-50 shadow-xs ring-1 ring-slate-900' : 'border-slate-200 bg-white'}`}
-                >
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-mono text-[10px] font-black tracking-tight text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
-                      {task.department.code}
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-medium">{new Date(task.createdAt).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-xs font-semibold text-slate-800 line-clamp-2 leading-tight mb-1.5">{task.justification}</p>
-                  <span className="block font-mono text-[9px] text-slate-400 truncate">UUID: {task.id}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+  if (!activeUser || activeUser.role !== Role.Purchasing_Office) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+        <Card className="max-w-md w-full text-center">
+          <h2 className="text-rose-700 font-bold text-sm">Access restricted</h2>
+          <p className="text-slate-500 text-sm mt-2">
+            Your account isn’t authorized to generate Purchase Orders. This page is available to the Purchasing Office only.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
-        {/* RIGHT COLUMN: GENERATION PROCESSING FORM */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          {runtimeError && (
-            <div className="mb-6 p-4 bg-rose-50 border-l-4 border-rose-500 rounded-r-lg text-rose-700 text-xs font-medium">
-              <span className="font-bold block uppercase tracking-wide text-[10px] mb-1">Ecosystem Constraint Intercept</span>
-              {runtimeError}
-            </div>
-          )}
+  const queueTasks: QueueTask[] = purchasingQueue.map((task) => ({
+    id: task.id,
+    title: task.justification,
+    subtitle: task.department.code,
+    dateLabel: new Date(task.createdAt).toLocaleDateString(),
+  }));
 
-          {transactionSuccess && (
-            <div className="mb-6 p-4 bg-indigo-50 border-l-4 border-indigo-500 rounded-r-lg text-indigo-700 text-xs font-medium">
-              <span className="font-bold block uppercase tracking-wide text-[10px] mb-1">Asset Token Persisted</span>
-              {transactionSuccess}
-            </div>
-          )}
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <PageShell>
+        <StageHeader
+          eyebrow="Step 4-A of 6 · PO Generation"
+          title="Generate Purchase Order"
+          description="Bind approved requisitions to official Purchase Order numbers prior to check issuance."
+          meta={{ label: 'Signed in as', value: activeUser.email }}
+        />
 
+        {runtimeError && <ErrorBanner>{runtimeError}</ErrorBanner>}
+        {transactionSuccess && <SuccessBanner>{transactionSuccess}</SuccessBanner>}
+
+        <ReviewWorkspace
+          queueTitle="Approved requests awaiting PO"
+          tasks={queueTasks}
+          loading={queueLoading}
+          emptyMessage="No approved requests are currently waiting for PO generation."
+          selectedId={purchaseRequestId}
+          onSelect={setPurchaseRequestId}
+        >
           <form onSubmit={handlePurchaseOrderGeneration} className="space-y-6">
-            
-            {/* Parent Requisition Key Target */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
-                Approved Purchase Request Core Tracking Key (UUIDv4)
-              </label>
+              <FieldLabel>Purchase Request Reference</FieldLabel>
               <input
                 type="text"
                 required
-                className={`w-full px-4 py-2 font-mono text-xs border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none bg-white text-slate-900 transition shadow-sm
-                  ${validationErrors?.purchaseRequestId ? 'border-rose-400 focus:ring-rose-500' : 'border-slate-300'}`}
-                placeholder="Select a valid row from the left panel to map tracking pointers..."
+                className={`${inputClass(!!validationErrors?.purchaseRequestId)} font-mono`}
+                placeholder="Select an approved request from the list…"
                 value={purchaseRequestId}
                 onChange={(e) => setPurchaseRequestId(e.target.value)}
               />
               {validationErrors?.purchaseRequestId?._errors && (
-                <p className="text-[11px] text-rose-500 font-medium mt-1.5">{validationErrors.purchaseRequestId._errors[0]}</p>
+                <FieldError>{validationErrors.purchaseRequestId._errors[0]}</FieldError>
               )}
             </div>
 
-            {/* Unique Custom Document reference designation code input */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
-                Authoritative Purchase Order Identifier Code (PO Number)
-              </label>
+              <FieldLabel>Purchase Order Number</FieldLabel>
               <input
                 type="text"
                 required
-                className={`w-full px-4 py-2 font-mono text-xs border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none bg-white text-slate-900 transition shadow-sm
-                  ${validationErrors?.poNumber ? 'border-rose-400 focus:ring-rose-500' : 'border-slate-300'}`}
+                className={`${inputClass(!!validationErrors?.poNumber)} font-mono`}
                 placeholder="e.g., PO-2026-XXXX"
                 value={poNumber}
                 onChange={(e) => setPoNumber(e.target.value)}
               />
               {validationErrors?.poNumber?._errors && (
-                <p className="text-[11px] text-rose-500 font-medium mt-1.5">{validationErrors.poNumber._errors[0]}</p>
+                <FieldError>{validationErrors.poNumber._errors[0]}</FieldError>
               )}
             </div>
 
-            {/* Section 3.2 Manual Mandatory Guardrail Acknowledgment Box */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-start">
-              <div className="flex items-center h-5">
-                <input
-                  id="custody-chk"
-                  type="checkbox"
-                  className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
-                  checked={custodyConfirmed}
-                  onChange={(e) => setCustodyConfirmed(e.target.checked)}
-                />
-              </div>
-              <div className="ml-3 text-xs leading-relaxed">
-                <label htmlFor="custody-chk" className="font-bold text-slate-800 cursor-pointer uppercase tracking-wide block">
-                  Custody & Structural Transmission Affirmation
-                </label>
-                <p className="text-slate-500 mt-0.5">
-                  I affirm that control and custody of this Purchase Order document remains strictly within the Purchasing Office domain[cite: 1]. Committing this form signals that the hard copy has been successfully prepared, printed, and is ready for institutional vendor dispatch or Business Office check issuance routing[cite: 1, 2].
-                </p>
-              </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">
+                Mandatory Preparation Check
+              </span>
+              <CheckItem
+                id="custody-chk"
+                checked={custodyConfirmed}
+                onChange={setCustodyConfirmed}
+                label="Confirm PO Preparation & Custody"
+                description="I affirm that the hard copy of this Purchase Order has been prepared, printed, and is ready for transmission to the Business Office or Supplier."
+              />
             </div>
 
-            {/* Submission Segment Bar */}
-            <div className="border-t border-slate-200 pt-4 flex justify-end">
-              <button
-                type="submit"
-                disabled={isPending}
-                className="px-6 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-md transition-all active:scale-[0.99]"
-              >
-                {isPending ? 'Encrypting Mapping Bindings...' : 'Generate Authoritative PO'}
-              </button>
+            <div className="border-t border-slate-100 pt-4 flex justify-end">
+              <ActionButton type="submit" disabled={isPending}>
+                {isPending ? 'Generating PO…' : 'Generate Purchase Order'}
+              </ActionButton>
             </div>
-
           </form>
-        </div>
-
-      </div>
+        </ReviewWorkspace>
+      </PageShell>
     </div>
   );
 }
