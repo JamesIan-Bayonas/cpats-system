@@ -1,4 +1,4 @@
-// src/app/dashboard/po/release-check/page.tsx
+// File: src/app/dashboard/po/release-check/page.tsx
 'use client';
 
 import React, { useState, useEffect, useTransition } from 'react';
@@ -131,7 +131,7 @@ export default function ReleaseCheckPage() {
           throw new Error(result.error || 'A transaction exception occurred while recording the check release.');
         }
 
-        setTransactionSuccess(`Financial authorization confirmed. Check ${checkNumber} assigned.`);
+        setTransactionSuccess(`Financial authorization confirmed. Check [${checkNumber}] assigned.`);
         
         setPoId('');
         setCheckNumber('');
@@ -147,41 +147,39 @@ export default function ReleaseCheckPage() {
   };
 
   const handleTaskSelection = (taskId: string) => {
-    const task = checkQueue.find(t => t.id === taskId);
+    const task = checkQueue.find((t) => t.id === taskId);
     if (task) {
-      const unissuedPO = task.purchaseOrders.find(po => !po.isCheckIssued);
+      const unissuedPO = task.purchaseOrders.find((po) => !po.isCheckIssued);
       if (unissuedPO) {
         setPoId(unissuedPO.id);
       } else {
         setPoId('');
-        setSystemError("No unissued Purchase Order found for this request.");
+        setSystemError('No unissued Purchase Order found for this request.');
       }
     }
   };
 
   if (userLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
-        Loading your session…
+      <div className="min-h-[60vh] flex items-center justify-center text-sm font-medium text-slate-500 font-sans">
+        Loading session context…
       </div>
     );
   }
 
   if (!activeUser || activeUser.role !== Role.Business_Office) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-        <Card className="max-w-md w-full text-center">
-          <h2 className="text-rose-700 font-bold text-sm">Access restricted</h2>
-          <p className="text-slate-500 text-sm mt-2">
-            Your account isn’t authorized to release checks. This page is available to the Business Office only.
-          </p>
-        </Card>
-      </div>
+      <Card className="max-w-md w-full text-center mx-auto my-12">
+        <h2 className="text-rose-700 font-bold text-sm">Access Restricted</h2>
+        <p className="text-slate-500 text-xs mt-2 leading-relaxed">
+          Your account isn’t authorized to release checks. Available to the Business Office only.
+        </p>
+      </Card>
     );
   }
 
   const queueTasks: QueueTask[] = checkQueue.map((task) => {
-    const poTarget = task.purchaseOrders.find(p => !p.isCheckIssued);
+    const poTarget = task.purchaseOrders.find((p) => !p.isCheckIssued);
     return {
       id: task.id,
       title: task.justification,
@@ -191,61 +189,61 @@ export default function ReleaseCheckPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <PageShell>
-        <StageHeader
-          eyebrow="Step 4-B of 6 · Check Release"
-          title="Business Office Check Release"
-          description="Log physical bank disbursement codes and finalize the financial clearance for procurement."
-          meta={{ label: 'Signed in as', value: activeUser.email }}
-        />
+    <PageShell>
+      <StageHeader
+        eyebrow="Step 4-B of 6 · Check Release"
+        title="Business Office Check Release"
+        description="Log physical bank disbursement codes and finalize the financial clearance for procurement."
+        meta={{ label: 'Signed in as', value: activeUser.email }}
+      />
 
-        {systemError && <ErrorBanner>{systemError}</ErrorBanner>}
-        {transactionSuccess && <SuccessBanner>{transactionSuccess}</SuccessBanner>}
+      {systemError && <ErrorBanner>{systemError}</ErrorBanner>}
+      {transactionSuccess && <SuccessBanner>{transactionSuccess}</SuccessBanner>}
 
-        <ReviewWorkspace
-          queueTitle="Orders awaiting check issuance"
-          tasks={queueTasks}
-          loading={queueLoading}
-          emptyMessage="No pending orders require check disbursement at this time."
-          selectedId={checkQueue.find(t => t.purchaseOrders.some(po => po.id === poId))?.id || ''}
-          onSelect={handleTaskSelection}
-        >
-          <form onSubmit={handleCheckReleaseSubmit} className="space-y-6">
-            <div>
-              <FieldLabel>Target Purchase Order (UUID)</FieldLabel>
-              <input
-                type="text"
-                required
-                readOnly
-                className={`${inputClass(!!validationErrors?.poId)} font-mono bg-slate-100 cursor-not-allowed`}
-                placeholder="Select a record from the list…"
-                value={poId}
-              />
-              {validationErrors?.poId?._errors && (
-                <FieldError>{validationErrors.poId._errors[0]}</FieldError>
-              )}
-            </div>
+      <ReviewWorkspace
+        queueTitle="Orders Awaiting Check Issuance"
+        tasks={queueTasks}
+        loading={queueLoading}
+        emptyMessage="No pending orders require check disbursement at this time."
+        selectedId={checkQueue.find((t) => t.purchaseOrders.some((po) => po.id === poId))?.id || ''}
+        onSelect={handleTaskSelection}
+      >
+        <form onSubmit={handleCheckReleaseSubmit} className="space-y-6">
+          <div>
+            <FieldLabel>Target Purchase Order (UUID)</FieldLabel>
+            <input
+              type="text"
+              required
+              readOnly
+              className={`${inputClass(!!validationErrors?.poId)} font-mono bg-slate-100 text-slate-600 cursor-not-allowed`}
+              placeholder="Select a record from the list on the left…"
+              value={poId}
+            />
+            {validationErrors?.poId?._errors && (
+              <FieldError>{validationErrors.poId._errors[0]}</FieldError>
+            )}
+          </div>
 
-            <div>
-              <FieldLabel>Bank Check Number</FieldLabel>
-              <input
-                type="text"
-                required
-                className={`${inputClass(!!validationErrors?.checkNumber)} font-mono`}
-                placeholder="Enter physical check sequence…"
-                value={checkNumber}
-                onChange={(e) => setCheckNumber(e.target.value)}
-              />
-              {validationErrors?.checkNumber?._errors && (
-                <FieldError>{validationErrors.checkNumber._errors[0]}</FieldError>
-              )}
-            </div>
+          <div>
+            <FieldLabel>Bank Check Number</FieldLabel>
+            <input
+              type="text"
+              required
+              className={`${inputClass(!!validationErrors?.checkNumber)} font-mono`}
+              placeholder="e.g. CHK-2026-9812"
+              value={checkNumber}
+              onChange={(e) => setCheckNumber(e.target.value)}
+            />
+            {validationErrors?.checkNumber?._errors && (
+              <FieldError>{validationErrors.checkNumber._errors[0]}</FieldError>
+            )}
+          </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-1">
-                Disbursement Clearances
-              </span>
+          <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+              Disbursement Authorization Clearances
+            </span>
+            <div className="space-y-2.5">
               <CheckItem
                 id="gate-sign"
                 checked={physicalCheckSigned}
@@ -261,15 +259,15 @@ export default function ReleaseCheckPage() {
                 description="The bank payment voucher reference has been recorded in the physical accounting log books."
               />
             </div>
+          </div>
 
-            <div className="border-t border-slate-100 pt-4 flex justify-end">
-              <ActionButton type="submit" disabled={isPending}>
-                {isPending ? 'Releasing…' : 'Authorize Check Release'}
-              </ActionButton>
-            </div>
-          </form>
-        </ReviewWorkspace>
-      </PageShell>
-    </div>
+          <div className="border-t border-slate-200/80 pt-4 flex justify-end">
+            <ActionButton type="submit" disabled={isPending}>
+              {isPending ? 'Releasing Check…' : 'Authorize Check Release'}
+            </ActionButton>
+          </div>
+        </form>
+      </ReviewWorkspace>
+    </PageShell>
   );
 }

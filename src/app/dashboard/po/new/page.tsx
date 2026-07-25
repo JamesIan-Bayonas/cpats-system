@@ -46,6 +46,9 @@ export default function NewPurchaseOrderPage() {
 
   const [purchaseRequestId, setPurchaseRequestId] = useState<string>('');
   const [poNumber, setPoNumber] = useState<string>('');
+  
+  // Dual-Check Verification Gates
+  const [specsVerified, setSpecsVerified] = useState<boolean>(false);
   const [custodyConfirmed, setCustodyConfirmed] = useState<boolean>(false);
 
   const [purchasingQueue, setPurchasingQueue] = useState<ApprovedPRQueueNode[]>([]);
@@ -89,6 +92,8 @@ export default function NewPurchaseOrderPage() {
     }
   };
 
+  const selectedPrNode = purchasingQueue.find((item) => item.id === purchaseRequestId);
+
   const handlePurchaseOrderGeneration = async (e: React.FormEvent) => {
     e.preventDefault();
     setRuntimeError(null);
@@ -100,8 +105,8 @@ export default function NewPurchaseOrderPage() {
       return;
     }
 
-    if (!custodyConfirmed) {
-      setRuntimeError('You must confirm custody and preparation of the hard copy before proceeding.');
+    if (!specsVerified || !custodyConfirmed) {
+      setRuntimeError('Mandatory Compliance: You must verify item specifications and confirm physical document custody before generating the PO.');
       return;
     }
 
@@ -127,6 +132,7 @@ export default function NewPurchaseOrderPage() {
         
         setPurchaseRequestId('');
         setPoNumber('');
+        setSpecsVerified(false);
         setCustodyConfirmed(false);
         
         await syncPurchasingQueue(activeUser.role);
@@ -139,22 +145,20 @@ export default function NewPurchaseOrderPage() {
 
   if (userLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
-        Loading your session…
+      <div className="min-h-[60vh] flex items-center justify-center text-sm font-medium text-slate-500 font-sans">
+        Loading session context…
       </div>
     );
   }
 
   if (!activeUser || activeUser.role !== Role.Purchasing_Office) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-        <Card className="max-w-md w-full text-center">
-          <h2 className="text-rose-700 font-bold text-sm">Access restricted</h2>
-          <p className="text-slate-500 text-sm mt-2">
-            Your account isn’t authorized to generate Purchase Orders. This page is available to the Purchasing Office only.
-          </p>
-        </Card>
-      </div>
+      <Card className="max-w-md w-full text-center mx-auto my-12">
+        <h2 className="text-rose-700 font-bold text-sm">Access Restricted</h2>
+        <p className="text-slate-500 text-xs mt-2 leading-relaxed">
+          Your account isn’t authorized to generate Purchase Orders. Available to the Purchasing Office only.
+        </p>
+      </Card>
     );
   }
 
@@ -166,78 +170,107 @@ export default function NewPurchaseOrderPage() {
   }));
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <PageShell>
-        <StageHeader
-          eyebrow="Step 4-A of 6 · PO Generation"
-          title="Generate Purchase Order"
-          description="Bind approved requisitions to official Purchase Order numbers prior to check issuance."
-          meta={{ label: 'Signed in as', value: activeUser.email }}
-        />
+    <PageShell>
+      <StageHeader
+        eyebrow="Step 4-A of 6 · PO Generation"
+        title="Generate Purchase Order"
+        description="Bind approved requisitions to official Purchase Order numbers prior to check issuance."
+        meta={{ label: 'Signed in as', value: activeUser.email }}
+      />
 
-        {runtimeError && <ErrorBanner>{runtimeError}</ErrorBanner>}
-        {transactionSuccess && <SuccessBanner>{transactionSuccess}</SuccessBanner>}
+      {runtimeError && <ErrorBanner>{runtimeError}</ErrorBanner>}
+      {transactionSuccess && <SuccessBanner>{transactionSuccess}</SuccessBanner>}
 
-        <ReviewWorkspace
-          queueTitle="Approved requests awaiting PO"
-          tasks={queueTasks}
-          loading={queueLoading}
-          emptyMessage="No approved requests are currently waiting for PO generation."
-          selectedId={purchaseRequestId}
-          onSelect={setPurchaseRequestId}
-        >
-          <form onSubmit={handlePurchaseOrderGeneration} className="space-y-6">
-            <div>
-              <FieldLabel>Purchase Request Reference</FieldLabel>
-              <input
-                type="text"
-                required
-                className={`${inputClass(!!validationErrors?.purchaseRequestId)} font-mono`}
-                placeholder="Select an approved request from the list…"
-                value={purchaseRequestId}
-                onChange={(e) => setPurchaseRequestId(e.target.value)}
-              />
-              {validationErrors?.purchaseRequestId?._errors && (
-                <FieldError>{validationErrors.purchaseRequestId._errors[0]}</FieldError>
-              )}
+      <ReviewWorkspace
+        queueTitle="Approved Requests Awaiting PO"
+        tasks={queueTasks}
+        loading={queueLoading}
+        emptyMessage="No approved requests are currently waiting for PO generation."
+        selectedId={purchaseRequestId}
+        onSelect={setPurchaseRequestId}
+      >
+        <form onSubmit={handlePurchaseOrderGeneration} className="space-y-6">
+          
+          {/* Target Reference Field */}
+          <div>
+            <FieldLabel>Target Purchase Request (UUID)</FieldLabel>
+            <input
+              type="text"
+              required
+              readOnly
+              className={`${inputClass(!!validationErrors?.purchaseRequestId)} font-mono bg-slate-100 text-slate-600 cursor-not-allowed`}
+              placeholder="Select an approved request from the queue list on the left…"
+              value={purchaseRequestId}
+            />
+            {validationErrors?.purchaseRequestId?._errors && (
+              <FieldError>{validationErrors.purchaseRequestId._errors[0]}</FieldError>
+            )}
+          </div>
+
+          {/* Active Requisition Details Context Banner */}
+          {selectedPrNode && (
+            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Requisition Summary Preview
+                </span>
+                <span className="font-mono text-[11px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-200">
+                  {selectedPrNode.department.code} Department
+                </span>
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                {selectedPrNode.justification}
+              </p>
             </div>
+          )}
 
-            <div>
-              <FieldLabel>Purchase Order Number</FieldLabel>
-              <input
-                type="text"
-                required
-                className={`${inputClass(!!validationErrors?.poNumber)} font-mono`}
-                placeholder="e.g., PO-2026-XXXX"
-                value={poNumber}
-                onChange={(e) => setPoNumber(e.target.value)}
+          {/* PO Number Input */}
+          <div>
+            <FieldLabel>Purchase Order Number</FieldLabel>
+            <input
+              type="text"
+              required
+              className={`${inputClass(!!validationErrors?.poNumber)} font-mono text-sm`}
+              placeholder="e.g., PO-2026-XXXX"
+              value={poNumber}
+              onChange={(e) => setPoNumber(e.target.value)}
+            />
+            {validationErrors?.poNumber?._errors && (
+              <FieldError>{validationErrors.poNumber._errors[0]}</FieldError>
+            )}
+          </div>
+
+          {/* Expanded 2-Step Mandatory Preparation Clearances */}
+          <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+              Mandatory Preparation Clearances
+            </span>
+            <div className="space-y-2.5">
+              <CheckItem
+                id="specs-chk"
+                checked={specsVerified}
+                onChange={setSpecsVerified}
+                label="Item Specifications & Vendor Match"
+                description="I confirm that line item quantities, technical specifications, and vendor quotations match the approved request."
               />
-              {validationErrors?.poNumber?._errors && (
-                <FieldError>{validationErrors.poNumber._errors[0]}</FieldError>
-              )}
-            </div>
-
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">
-                Mandatory Preparation Check
-              </span>
               <CheckItem
                 id="custody-chk"
                 checked={custodyConfirmed}
                 onChange={setCustodyConfirmed}
-                label="Confirm PO Preparation & Custody"
-                description="I affirm that the hard copy of this Purchase Order has been prepared, printed, and is ready for transmission to the Business Office or Supplier."
+                label="Confirm PO Preparation & Physical Custody"
+                description="I affirm that the hard copy of this Purchase Order has been prepared, printed, and is ready for transmission."
               />
             </div>
+          </div>
 
-            <div className="border-t border-slate-100 pt-4 flex justify-end">
-              <ActionButton type="submit" disabled={isPending}>
-                {isPending ? 'Generating PO…' : 'Generate Purchase Order'}
-              </ActionButton>
-            </div>
-          </form>
-        </ReviewWorkspace>
-      </PageShell>
-    </div>
+          {/* Form Commitment Action Footer */}
+          <div className="border-t border-slate-200/80 pt-4 flex justify-end">
+            <ActionButton type="submit" disabled={isPending}>
+              {isPending ? 'Generating PO…' : 'Generate Purchase Order'}
+            </ActionButton>
+          </div>
+        </form>
+      </ReviewWorkspace>
+    </PageShell>
   );
 }
