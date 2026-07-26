@@ -83,7 +83,7 @@ export default function NewPurchaseRequestPage() {
     setFieldErrors(null);
 
     if (!activeUser || activeUser.role !== Role.Requesting_Office) {
-      setSystemError('Only Requesting Office accounts can create a new Purchase Request.');
+      setSystemError('SECURITY EXCEPTION: Only Requesting Office accounts can create a new Purchase Request.');
       return;
     }
 
@@ -100,15 +100,15 @@ export default function NewPurchaseRequestPage() {
         if (!response.ok) {
           if (response.status === 422 && result.errors) {
             setFieldErrors(result.errors);
-            throw new Error('Please review the highlighted fields below and try again.');
+            throw new Error('Validation exception: Please review the highlighted fields below.');
           }
-          throw new Error(result.error || 'Something went wrong while submitting your request.');
+          throw new Error(result.error || 'A transaction exception occurred while submitting your request.');
         }
 
         router.refresh();
         router.push('/dashboard/audit');
       } catch (err: unknown) {
-        setSystemError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+        setSystemError(err instanceof Error ? err.message : 'An unclassified system exception occurred.');
       }
     });
   };
@@ -116,7 +116,7 @@ export default function NewPurchaseRequestPage() {
   if (userLoading) {
     return (
       <div className="flex items-center justify-center p-12 text-sm text-slate-500 font-sans">
-        Loading your session…
+        Loading active session context…
       </div>
     );
   }
@@ -126,7 +126,7 @@ export default function NewPurchaseRequestPage() {
       <Card className="max-w-md w-full text-center mx-auto my-12">
         <h2 className="text-rose-700 font-bold text-sm">Access Restricted</h2>
         <p className="text-slate-500 text-sm mt-2">
-          Your account ({activeUser?.role.replace(/_/g, ' ') || 'Guest'}) is not authorized to create Purchase Requests.
+          Your account ({activeUser?.role.replace(/_/g, ' ') || 'Guest'}) is not authorized to initialize Purchase Requests.
         </p>
       </Card>
     );
@@ -136,102 +136,148 @@ export default function NewPurchaseRequestPage() {
     <PageShell>
       <StageHeader
         eyebrow="Step 1 of 6 · New Purchase Request"
-        title="New Purchase Request"
-        description="Describe what your department needs and why. Once submitted, this request will be routed to the Business Office for evaluation."
-        meta={{ label: 'Requesting Department', value: `${activeUser.departmentName} [${activeUser.departmentCode}]` }}
+        title="Requisition Initiation Console"
+        description="Specify required departmental equipment or supplies. Upon submission, this request will be dispatched to the Business Office for fiscal evaluation."
+        meta={{ label: 'Requesting Unit', value: `${activeUser.departmentName} [${activeUser.departmentCode}]` }}
       />
 
       {systemError && <ErrorBanner>{systemError}</ErrorBanner>}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card>
-          <FieldLabel>Justification / Purpose</FieldLabel>
+        
+        {/* JUSTIFICATION & PURPOSE SECTION */}
+        <Card className="space-y-3">
+          <div className="flex justify-between items-center">
+            <FieldLabel>Operational Justification &amp; Purpose</FieldLabel>
+            <span className="text-[10px] font-mono text-slate-400">
+              Min. 10 Characters Required
+            </span>
+          </div>
+
           <textarea
             required
-            rows={3}
+            rows={4}
             className={inputClass(!!fieldErrors?.justification)}
-            placeholder="Explain why this purchase is needed and how it supports your department's operations…"
+            placeholder="e.g., Procurement of 5 high-resolution webcams and USB barcode scanners for College of Computer Studies Laboratory 3 to support academic coursework, practical examinations, and COA asset compliance verification..."
             value={justification}
             onChange={(e) => setJustification(e.target.value)}
           />
+
+          <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-3 text-[11px] text-slate-500 leading-relaxed space-y-1">
+            <span className="font-bold text-slate-700 block uppercase tracking-wider text-[9px]">
+              💡 Audit Compliance Guidance
+            </span>
+            <p>
+              Provide clear operational details (Target Location, Specific Academic/Administrative Purpose, and Urgency). Detailed justifications reduce evaluation delays during Business Office budget verification.
+            </p>
+          </div>
+
           {fieldErrors?.justification?._errors && (
             <FieldError>{fieldErrors.justification._errors[0]}</FieldError>
           )}
         </Card>
 
-        <Card className="bg-emerald-50/40 border-emerald-200 flex items-start gap-3.5">
+        {/* DIRECT PO BYPASS OPTION */}
+        <Card className="bg-emerald-50/40 border-emerald-200/80 flex items-start gap-3.5 p-4">
           <input
             id="bypass-toggle"
             type="checkbox"
-            className="h-4 w-4 mt-1 accent-emerald-700 rounded cursor-pointer"
+            className="h-4 w-4 mt-0.5 accent-emerald-700 rounded cursor-pointer shrink-0"
             checked={isDirectPoBypass}
             onChange={(e) => setIsDirectPoBypass(e.target.checked)}
           />
-          <div className="text-sm">
-            <label htmlFor="bypass-toggle" className="font-semibold text-emerald-900 cursor-pointer block">
-              Skip to Purchase Order — approved request letter already on file
+          <div className="text-xs">
+            <label htmlFor="bypass-toggle" className="font-bold text-emerald-950 cursor-pointer block">
+              Executive Pre-Approved Letter Bypass (Proceed Directly to PO Generation)
             </label>
-            <p className="text-slate-500 mt-1 leading-relaxed text-xs">
-              Check this box only if you have a signed request letter approved outside this system. The request will skip Business and Admin Office reviews and proceed directly to PO generation.
+            <p className="text-slate-600 mt-1 leading-relaxed text-[11px]">
+              Enable this bypass strictly if an officially signed executive approval letter is already on file. This requisition will skip standard Business and Admin Office reviews and route directly to the Purchasing Office for PO generation.
             </p>
           </div>
         </Card>
 
+        {/* ITEMS REQUESTED SECTION */}
         <Card className="space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-            <h3 className="text-sm font-bold text-slate-800">Items Requested</h3>
-            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-              {items.length} {items.length === 1 ? 'Item' : 'Items'}
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Requested Items Schedule</h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Itemize specific equipment, specs, quantities, and estimated unit prices.
+              </p>
+            </div>
+            <span className="text-xs font-bold text-emerald-800 bg-emerald-100/70 px-3 py-1 rounded-full border border-emerald-200">
+              {items.length} {items.length === 1 ? 'Line Item' : 'Line Items'}
             </span>
+          </div>
+
+          {/* Desktop/Tablet Column Header Legend */}
+          <div className="hidden sm:grid grid-cols-12 gap-3 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
+            <div className="col-span-5">Item Description &amp; Technical Specifications</div>
+            <div className="col-span-2">Quantity</div>
+            <div className="col-span-3">Unit Price (₱)</div>
+            <div className="col-span-2 text-right">Subtotal</div>
           </div>
 
           <div className="space-y-3">
             {items.map((item, index) => (
               <div
                 key={index}
-                className="grid grid-cols-12 gap-3 items-center bg-slate-50 p-3 rounded-lg border border-slate-200"
+                className="grid grid-cols-12 gap-3 items-center bg-slate-50/80 p-3 rounded-xl border border-slate-200/90 hover:border-slate-300 transition"
               >
+                {/* Item Name / Specifications */}
                 <div className="col-span-12 sm:col-span-5">
+                  <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Item Description &amp; Specs
+                  </label>
                   <input
                     type="text"
                     required
-                    placeholder="Item description / specs"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-1 focus:ring-emerald-600 focus:border-transparent outline-none transition"
+                    placeholder="e.g., Logitech C922 Pro HD Webcam (1080p/30fps with tripod)"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 outline-none transition font-sans"
                     value={item.itemName}
                     onChange={(e) => handleItemChange(index, 'itemName', e.target.value)}
                   />
                 </div>
 
+                {/* Quantity */}
                 <div className="col-span-5 sm:col-span-2">
+                  <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Quantity
+                  </label>
                   <input
                     type="number"
                     required
                     min={1}
                     placeholder="Qty"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-1 focus:ring-emerald-600 focus:border-transparent outline-none transition"
-                    value={item.quantity}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 outline-none transition font-mono"
+                    value={item.quantity || ''}
                     onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
                   />
                 </div>
 
+                {/* Unit Price */}
                 <div className="col-span-5 sm:col-span-3">
+                  <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Unit Price (₱)
+                  </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm font-mono">₱</span>
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-xs font-mono">₱</span>
                     <input
                       type="number"
                       required
                       min={0.01}
                       step="0.01"
                       placeholder="0.00"
-                      className="w-full pl-7 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-1 focus:ring-emerald-600 focus:border-transparent outline-none transition font-mono"
+                      className="w-full pl-7 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 outline-none transition font-mono"
                       value={item.unitPrice || ''}
                       onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
                     />
                   </div>
                 </div>
 
+                {/* Actions & Subtotal */}
                 <div className="col-span-2 sm:col-span-2 flex items-center justify-end gap-2">
-                  <span className="hidden lg:inline text-xs font-mono text-slate-500 font-bold">
+                  <span className="hidden lg:inline text-xs font-mono text-slate-700 font-bold">
                     ₱{(item.quantity * item.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </span>
                   <button
@@ -239,7 +285,7 @@ export default function NewPurchaseRequestPage() {
                     onClick={() => removeItemRow(index)}
                     disabled={items.length === 1}
                     aria-label="Remove item"
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg disabled:opacity-20 transition"
+                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg disabled:opacity-20 transition cursor-pointer"
                   >
                     ✕
                   </button>
@@ -249,22 +295,30 @@ export default function NewPurchaseRequestPage() {
           </div>
 
           <ActionButton type="button" variant="outline" onClick={addItemRow}>
-            + Add Another Item
+            + Add Line Item
           </ActionButton>
         </Card>
 
-        <Card className="flex items-center justify-between">
+        {/* GRAND TOTAL & SUBMISSION */}
+        <Card className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900 text-white">
           <div>
-            <span className="text-xs text-slate-400 uppercase tracking-wide block">Estimated Total</span>
-            <div className="text-2xl font-bold text-slate-900 mt-0.5 font-mono">
+            <span className="text-[10px] text-slate-400 uppercase tracking-widest block font-mono">
+              Estimated Total Requisition Amount
+            </span>
+            <div className="text-2xl font-black text-emerald-400 mt-0.5 font-mono">
               ₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
 
-          <ActionButton type="submit" disabled={isPending}>
-            {isPending ? 'Submitting…' : 'Submit Purchase Request'}
+          <ActionButton 
+            type="submit" 
+            disabled={isPending}
+            className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold uppercase tracking-wider text-xs"
+          >
+            {isPending ? 'Dispatching Requisition…' : 'Submit Purchase Request'}
           </ActionButton>
         </Card>
+
       </form>
     </PageShell>
   );
