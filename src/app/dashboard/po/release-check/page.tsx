@@ -35,6 +35,12 @@ interface PurchaseOrderSummary {
   isCheckIssued: boolean;
 }
 
+interface ItemPayloadNode {
+  itemName: string;
+  quantity: number;
+  unitPrice: number;
+}
+
 interface AwaitingCheckPRNode {
   id: string;
   justification: string;
@@ -42,6 +48,21 @@ interface AwaitingCheckPRNode {
   createdAt: string;
   department: { code: string; name: string };
   purchaseOrders: PurchaseOrderSummary[];
+  itemsPayload?: ItemPayloadNode[] | unknown;
+}
+
+function deriveItemSummaryTitle(itemsPayload: unknown): string {
+  if (!itemsPayload || !Array.isArray(itemsPayload) || itemsPayload.length === 0) {
+    return 'Purchase Order Requisition';
+  }
+  const items = itemsPayload as ItemPayloadNode[];
+  const firstItemName = items[0]?.itemName?.trim() || 'Purchased Item';
+  const firstItemQty = items[0]?.quantity || 1;
+
+  if (items.length === 1) {
+    return `${firstItemName} (x${firstItemQty})`;
+  }
+  return `${firstItemName} (+${items.length - 1} more item${items.length > 2 ? 's' : ''})`;
 }
 
 export default function ReleaseCheckPage() {
@@ -131,7 +152,7 @@ export default function ReleaseCheckPage() {
           throw new Error(result.error || 'A transaction exception occurred while recording the check release.');
         }
 
-        setTransactionSuccess(`Financial authorization confirmed. Check [${checkNumber}] assigned.`);
+        setTransactionSuccess(`Financial authorization confirmed. Check [${checkNumber}] assigned successfully.`);
         
         setPoId('');
         setCheckNumber('');
@@ -180,11 +201,15 @@ export default function ReleaseCheckPage() {
 
   const queueTasks: QueueTask[] = checkQueue.map((task) => {
     const poTarget = task.purchaseOrders.find((p) => !p.isCheckIssued);
+    const poCode = poTarget ? poTarget.poNumber : 'PO Missing';
+    const deptBadge = task.department?.code ? `${task.department.code} • ${poCode}` : poCode;
+
     return {
       id: task.id,
-      title: task.justification,
-      subtitle: poTarget ? poTarget.poNumber : 'PO Missing',
+      title: deriveItemSummaryTitle(task.itemsPayload),
+      subtitle: deptBadge,
       dateLabel: new Date(task.createdAt).toLocaleDateString(),
+      description: task.justification,
     };
   });
 
@@ -192,8 +217,8 @@ export default function ReleaseCheckPage() {
     <PageShell>
       <StageHeader
         eyebrow="Step 4-B of 6 · Check Release"
-        title="Business Office Check Release"
-        description="Log physical bank disbursement codes and finalize the financial clearance for procurement."
+        title="Business Office Check Release Terminal"
+        description="Log physical bank disbursement codes and finalize financial clearance before physical item purchase or supplier delivery."
         meta={{ label: 'Signed in as', value: activeUser.email }}
       />
 
@@ -210,13 +235,13 @@ export default function ReleaseCheckPage() {
       >
         <form onSubmit={handleCheckReleaseSubmit} className="space-y-6">
           <div>
-            <FieldLabel>Target Purchase Order (UUID)</FieldLabel>
+            <FieldLabel>Target Purchase Order (UUID Reference)</FieldLabel>
             <input
               type="text"
               required
               readOnly
               className={`${inputClass(!!validationErrors?.poId)} font-mono bg-slate-100 text-slate-600 cursor-not-allowed`}
-              placeholder="Select a record from the list on the left…"
+              placeholder="Select an order from the queue list on the left…"
               value={poId}
             />
             {validationErrors?.poId?._errors && (
@@ -249,7 +274,7 @@ export default function ReleaseCheckPage() {
                 checked={physicalCheckSigned}
                 onChange={setPhysicalCheckSigned}
                 label="Check Signatory Clearance Verified"
-                description="I verify the physical corporate check has been reviewed, cross-matched with the total, and signed by authorized executives."
+                description="I verify the physical corporate check has been reviewed, cross-matched with the total amount, and signed by authorized executives."
               />
               <CheckItem
                 id="gate-ledger"

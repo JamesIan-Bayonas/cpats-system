@@ -1,10 +1,10 @@
-// src/app/dashboard/po/new/page.tsx
 'use client';
 
 import React, { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Role, PRStatus } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
+import QRCodeSVG from '@/components/ui/QRCodeSVG';
 import {
   PageShell,
   StageHeader,
@@ -18,6 +18,7 @@ import {
   ReviewWorkspace,
   ActionButton,
   QueueTask,
+  deriveItemSummaryTitle,
 } from '@/components/ui/WorkflowUI';
 
 interface ZodSubErrors {
@@ -32,6 +33,7 @@ interface ZodFormErrors {
 interface ApprovedPRQueueNode {
   id: string;
   justification: string;
+  itemsPayload?: any;
   status: PRStatus;
   createdAt: string;
   department: { code: string; name: string };
@@ -46,10 +48,14 @@ export default function NewPurchaseOrderPage() {
 
   const [purchaseRequestId, setPurchaseRequestId] = useState<string>('');
   const [poNumber, setPoNumber] = useState<string>('');
-  
-  // Dual-Check Verification Gates
-  const [specsVerified, setSpecsVerified] = useState<boolean>(false);
   const [custodyConfirmed, setCustodyConfirmed] = useState<boolean>(false);
+
+  const [createdPoDetails, setCreatedPoDetails] = useState<{
+    poNumber: string;
+    qrCodeToken: string;
+    departmentCode?: string;
+    prId?: string;
+  } | null>(null);
 
   const [purchasingQueue, setPurchasingQueue] = useState<ApprovedPRQueueNode[]>([]);
   const [queueLoading, setQueueLoading] = useState<boolean>(true);
@@ -92,7 +98,11 @@ export default function NewPurchaseOrderPage() {
     }
   };
 
-  const selectedPrNode = purchasingQueue.find((item) => item.id === purchaseRequestId);
+  const handleGeneratePoNumber = () => {
+    const year = new Date().getFullYear();
+    const randomSeq = Math.floor(1000 + Math.random() * 9000);
+    setPoNumber(`PO-${year}-${randomSeq}`);
+  };
 
   const handlePurchaseOrderGeneration = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,10 +115,12 @@ export default function NewPurchaseOrderPage() {
       return;
     }
 
-    if (!specsVerified || !custodyConfirmed) {
-      setRuntimeError('Mandatory Compliance: You must verify item specifications and confirm physical document custody before generating the PO.');
+    if (!custodyConfirmed) {
+      setRuntimeError('You must confirm custody and preparation of the hard copy before proceeding.');
       return;
     }
+
+    const selectedPR = purchasingQueue.find((node) => node.id === purchaseRequestId);
 
     startTransition(async () => {
       try {
@@ -128,11 +140,17 @@ export default function NewPurchaseOrderPage() {
           throw new Error(result.error || 'A system error occurred while generating the PO.');
         }
 
-        setTransactionSuccess(`Purchase Order [${poNumber}] successfully generated and bound to request.`);
+        setCreatedPoDetails({
+          poNumber: result.data.poNumber,
+          qrCodeToken: result.data.qrCodeToken,
+          departmentCode: selectedPR?.department.code || 'DMC',
+          prId: purchaseRequestId,
+        });
+
+        setTransactionSuccess(`Purchase Order [${poNumber}] successfully generated and bound with QR token.`);
         
         setPurchaseRequestId('');
         setPoNumber('');
-        setSpecsVerified(false);
         setCustodyConfirmed(false);
         
         await syncPurchasingQueue(activeUser.role);
@@ -145,7 +163,7 @@ export default function NewPurchaseOrderPage() {
 
   if (userLoading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-sm font-medium text-slate-500 font-sans">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500 font-sans">
         Loading session context…
       </div>
     );
@@ -156,7 +174,7 @@ export default function NewPurchaseOrderPage() {
       <Card className="max-w-md w-full text-center mx-auto my-12">
         <h2 className="text-rose-700 font-bold text-sm">Access Restricted</h2>
         <p className="text-slate-500 text-xs mt-2 leading-relaxed">
-          Your account isn’t authorized to generate Purchase Orders. Available to the Purchasing Office only.
+          Your account is not authorized to generate Purchase Orders. Available to Purchasing Office profiles only.
         </p>
       </Card>
     );
@@ -164,22 +182,57 @@ export default function NewPurchaseOrderPage() {
 
   const queueTasks: QueueTask[] = purchasingQueue.map((task) => ({
     id: task.id,
-    title: task.justification,
+    title: deriveItemSummaryTitle(task.itemsPayload, task.justification),
     subtitle: task.department.code,
     dateLabel: new Date(task.createdAt).toLocaleDateString(),
+    justificationPreview: task.justification,
   }));
 
   return (
     <PageShell>
       <StageHeader
-        eyebrow="Step 4-A of 6 · PO Generation"
-        title="Generate Purchase Order"
-        description="Bind approved requisitions to official Purchase Order numbers prior to check issuance."
+        eyebrow="Step 4-A of 6 · PO Generation & QR Tagging"
+        title="Generate Purchase Order & Asset QR Tag"
+        description="Bind approved requisitions to official Purchase Order numbers and generate cryptographic QR barcode tags for physical asset tagging."
         meta={{ label: 'Signed in as', value: activeUser.email }}
       />
 
       {runtimeError && <ErrorBanner>{runtimeError}</ErrorBanner>}
       {transactionSuccess && <SuccessBanner>{transactionSuccess}</SuccessBanner>}
+
+      {createdPoDetails && (
+        <div className="bg-[#022C22] text-white border border-emerald-800 rounded-xl p-6 my-4 shadow-xl">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="space-y-2 text-center sm:text-left">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-emerald-300 bg-emerald-900/90 px-2.5 py-1 rounded border border-emerald-700">
+                  Official Asset Sticker Tag
+                </span>
+                <span className="text-[10px] font-mono font-bold uppercase text-emerald-200 bg-emerald-900/80 px-2.5 py-1 rounded border border-emerald-700">
+                  Dept: {createdPoDetails.departmentCode}
+                </span>
+              </div>
+              <h3 className="text-3xl font-black tracking-tight text-white">{createdPoDetails.poNumber}</h3>
+              <p className="text-xs text-emerald-200 font-mono break-all max-w-md">
+                Cryptographic Token: <span className="text-emerald-300 font-bold">{createdPoDetails.qrCodeToken}</span>
+              </p>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase px-4 py-2 rounded-lg transition cursor-pointer active:scale-95 shadow-sm inline-flex items-center gap-2"
+                >
+                  <span>🖨</span> Print Official Asset Tag Sticker
+                </button>
+              </div>
+            </div>
+            <div className="bg-white p-3.5 rounded-xl shadow-md shrink-0 border border-emerald-400/40 text-center">
+              <QRCodeSVG value={createdPoDetails.qrCodeToken} size={130} />
+              <span className="block text-[9px] font-mono font-bold text-slate-700 mt-1.5 uppercase tracking-wider">DMC CPATS STICKER</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ReviewWorkspace
         queueTitle="Approved Requests Awaiting PO"
@@ -190,16 +243,14 @@ export default function NewPurchaseOrderPage() {
         onSelect={setPurchaseRequestId}
       >
         <form onSubmit={handlePurchaseOrderGeneration} className="space-y-6">
-          
-          {/* Target Reference Field */}
           <div>
-            <FieldLabel>Target Purchase Request (UUID)</FieldLabel>
+            <FieldLabel>Purchase Request Reference (UUID)</FieldLabel>
             <input
               type="text"
               required
               readOnly
               className={`${inputClass(!!validationErrors?.purchaseRequestId)} font-mono bg-slate-100 text-slate-600 cursor-not-allowed`}
-              placeholder="Select an approved request from the queue list on the left…"
+              placeholder="Select an approved request from the list..."
               value={purchaseRequestId}
             />
             {validationErrors?.purchaseRequestId?._errors && (
@@ -207,31 +258,22 @@ export default function NewPurchaseOrderPage() {
             )}
           </div>
 
-          {/* Active Requisition Details Context Banner */}
-          {selectedPrNode && (
-            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-4 space-y-2.5">
-              <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Requisition Summary Preview
-                </span>
-                <span className="font-mono text-[11px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-200">
-                  {selectedPrNode.department.code} Department
-                </span>
-              </div>
-              <p className="text-xs text-slate-700 leading-relaxed font-medium">
-                {selectedPrNode.justification}
-              </p>
-            </div>
-          )}
-
-          {/* PO Number Input */}
           <div>
-            <FieldLabel>Purchase Order Number</FieldLabel>
+            <div className="flex justify-between items-center mb-1.5">
+              <FieldLabel>Purchase Order Number</FieldLabel>
+              <button
+                type="button"
+                onClick={handleGeneratePoNumber}
+                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+              >
+                ⚡ Auto-Format PO Number
+              </button>
+            </div>
             <input
               type="text"
               required
-              className={`${inputClass(!!validationErrors?.poNumber)} font-mono text-sm`}
-              placeholder="e.g., PO-2026-XXXX"
+              className={`${inputClass(!!validationErrors?.poNumber)} font-mono`}
+              placeholder="e.g., PO-2026-8891"
               value={poNumber}
               onChange={(e) => setPoNumber(e.target.value)}
             />
@@ -240,33 +282,22 @@ export default function NewPurchaseOrderPage() {
             )}
           </div>
 
-          {/* Expanded 2-Step Mandatory Preparation Clearances */}
-          <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-3">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Mandatory Preparation Clearances
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">
+              Mandatory Preparation Check
             </span>
-            <div className="space-y-2.5">
-              <CheckItem
-                id="specs-chk"
-                checked={specsVerified}
-                onChange={setSpecsVerified}
-                label="Item Specifications & Vendor Match"
-                description="I confirm that line item quantities, technical specifications, and vendor quotations match the approved request."
-              />
-              <CheckItem
-                id="custody-chk"
-                checked={custodyConfirmed}
-                onChange={setCustodyConfirmed}
-                label="Confirm PO Preparation & Physical Custody"
-                description="I affirm that the hard copy of this Purchase Order has been prepared, printed, and is ready for transmission."
-              />
-            </div>
+            <CheckItem
+              id="custody-chk"
+              checked={custodyConfirmed}
+              onChange={setCustodyConfirmed}
+              label="Confirm PO Preparation & Custody"
+              description="I affirm that the hard copy of this Purchase Order has been prepared, printed, and is ready for transmission to the Business Office or Supplier."
+            />
           </div>
 
-          {/* Form Commitment Action Footer */}
-          <div className="border-t border-slate-200/80 pt-4 flex justify-end">
+          <div className="border-t border-slate-100 pt-4 flex justify-end">
             <ActionButton type="submit" disabled={isPending}>
-              {isPending ? 'Generating PO…' : 'Generate Purchase Order'}
+              {isPending ? 'Generating PO & Tag...' : 'Generate PO & Asset Tag'}
             </ActionButton>
           </div>
         </form>
