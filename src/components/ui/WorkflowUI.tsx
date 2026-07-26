@@ -4,6 +4,26 @@
 import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 
+export function deriveItemSummaryTitle(itemsPayload: any, fallbackJustification: string = 'Purchase Requisition'): string {
+  if (!itemsPayload) return fallbackJustification;
+  try {
+    const parsed = typeof itemsPayload === 'string' ? JSON.parse(itemsPayload) : itemsPayload;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const first = parsed[0];
+      const itemName = first.itemName || first.name || 'Requested Item';
+      const qty = first.quantity || first.qty || 1;
+      const totalCount = parsed.length;
+      if (totalCount === 1) {
+        return `${itemName} (x${qty})`;
+      }
+      return `${itemName} (x${qty}) +${totalCount - 1} more item${totalCount - 1 > 1 ? 's' : ''}`;
+    }
+  } catch {
+    // Fallback on JSON parse exception
+  }
+  return fallbackJustification;
+}
+
 export function PageShell({ children }: { children: React.ReactNode }) {
   return <main className="max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-8 space-y-4 sm:space-y-8 font-sans">{children}</main>;
 }
@@ -47,8 +67,11 @@ export function Card({
   children: React.ReactNode;
   className?: string;
 }) {
+  const hasCustomBg = /\bbg-/.test(className);
+  const defaultBg = hasCustomBg ? '' : 'bg-white';
+
   return (
-    <div className={`bg-white border border-slate-200/80 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.04)] p-4 sm:p-6 transition-all duration-150 ${className}`}>
+    <div className={`${defaultBg} border border-slate-200/80 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.04)] p-4 sm:p-6 transition-all duration-150 ${className}`}>
       {children}
     </div>
   );
@@ -131,6 +154,7 @@ export interface QueueTask {
   title: string;
   subtitle: string;
   dateLabel: string;
+  justificationPreview?: string;
 }
 
 export function ReviewWorkspace({
@@ -156,7 +180,7 @@ export function ReviewWorkspace({
         <h3 className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">{queueTitle}</h3>
 
         {loading ? (
-          <div className="p-4 text-center text-xs text-slate-400">Loading queue...</div>
+          <div className="p-4 text-center text-xs text-slate-400">Loading workspace queue...</div>
         ) : tasks.length === 0 ? (
           <div className="p-4 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50">
             {emptyMessage}
@@ -180,7 +204,12 @@ export function ReviewWorkspace({
                   </span>
                   <span className="text-[10px] text-slate-400">{task.dateLabel}</span>
                 </div>
-                <p className="text-xs sm:text-sm font-medium text-slate-800 line-clamp-2 leading-snug">{task.title}</p>
+                <p className="text-xs sm:text-sm font-bold text-slate-900 line-clamp-1 leading-snug">{task.title}</p>
+                {task.justificationPreview && (
+                  <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 italic" title={task.justificationPreview}>
+                    "{task.justificationPreview}"
+                  </p>
+                )}
                 <span className="block font-mono text-[9px] text-slate-400 truncate mt-1">Ref: {task.id}</span>
               </button>
             ))}

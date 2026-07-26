@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
     }
 
     const { justification, isDirectPoBypass, items } = validation.data;
-    const initialStatus = isDirectPoBypass ? PRStatus.Approved_Awaiting_PO : PRStatus.Draft;
+
+    const initialStatus = isDirectPoBypass ? PRStatus.Approved_Awaiting_PO : PRStatus.Pending_Business_Approval;
 
     const executionResult = await prisma.$transaction(async (tx) => {
       const newPR = await tx.purchaseRequest.create({
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
           newState: initialStatus,
           remarks: isDirectPoBypass
             ? "PR initialized using Executive Authorization Document. System steps bypassed."
-            : "Purchase request initialized successfully in Draft mode.",
+            : "Purchase request created and submitted to Business Office for evaluation.",
         },
       });
 
