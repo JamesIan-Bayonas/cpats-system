@@ -153,17 +153,31 @@ export default function InstitutionalLoginPage() {
 
         </div>
 
-        {/* 3. Footer: Legal & Data Privacy Link */}
-        <div className="relative z-10 text-[11px] text-emerald-200/50 flex justify-between items-center border-t border-emerald-800/40 pt-4">
-          <span>© 2026 DMC College Foundation Inc.</span>
-          <button 
-            type="button" 
-            onClick={() => setShowPrivacyModal(true)}
-            className="hover:text-emerald-200 underline transition cursor-pointer"
-          >
-            Data Privacy Undertaking
-          </button>
+        {/* 3. Footer: Framed Institutional Legal & Privacy Sub-Card */}
+        <div className="relative z-10 mt-auto pt-4">
+          <div className="bg-[#123820]/50 border border-emerald-500/15 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-[11px]">
+            <div className="space-y-0.5">
+              <span className="block font-bold text-emerald-100/90 text-[11px]">
+                © 2026 DMC College Foundation Inc.
+              </span>
+              <span className="block text-[10px] text-emerald-200/50">
+                Internal Governance &amp; COA Audit Gateway
+              </span>
+            </div>
+
+            <button 
+              type="button" 
+              onClick={() => setShowPrivacyModal(true)}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-900/80 hover:bg-emerald-800 border border-emerald-600/40 hover:border-emerald-500/60 text-emerald-200 hover:text-white text-[10px] font-semibold transition cursor-pointer shrink-0 active:scale-95 shadow-2xs"
+            >
+              <svg className="w-3 h-3 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span>Data Privacy Undertaking</span>
+            </button>
+          </div>
         </div>
+
       </div>
 
       {/* ========================================================================= */}

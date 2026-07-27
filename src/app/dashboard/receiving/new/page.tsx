@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Role, PRStatus } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
@@ -17,6 +17,7 @@ import {
   ReviewWorkspace,
   ActionButton,
   QueueTask,
+  deriveItemSummaryTitle,
 } from '@/components/ui/WorkflowUI';
 
 interface ZodSubErrors {
@@ -33,9 +34,11 @@ interface ZodFormErrors {
 interface PendingPOQueueNode {
   id: string;
   poNumber: string;
+  qrCodeToken?: string;
   purchaseRequestId: string;
   purchaseRequest: {
     justification: string;
+    itemsPayload?: any;
     status: PRStatus;
     createdAt: string;
     department: { code: string; name: string };
@@ -49,6 +52,7 @@ export default function ReceivingCustodianPage() {
   const [activeUser, setActiveUser] = useState<AuthUser | null>(null);
   const [userLoading, setUserLoading] = useState<boolean>(true);
 
+  // Form State
   const [purchaseOrderId, setPurchaseOrderId] = useState<string>('');
   const [condition, setCondition] = useState<'Good' | 'Damaged' | ''>('');
   const [invoiceFilePath, setInvoiceFilePath] = useState<string>('');
@@ -61,6 +65,16 @@ export default function ReceivingCustodianPage() {
 
   const [receivingQueue, setReceivingQueue] = useState<PendingPOQueueNode[]>([]);
   const [queueLoading, setQueueLoading] = useState<boolean>(true);
+
+  // WebRTC Live QR Scanner Modal State
+  const [showQrDecoderModal, setShowQrDecoderModal] = useState<boolean>(false);
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const [scannedQrInput, setScannedQrInput] = useState<string>('');
+  const [qrScanStatus, setQrScanStatus] = useState<string | null>(null);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   const [systemError, setSystemError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ZodFormErrors | null>(null);
@@ -77,6 +91,10 @@ export default function ReceivingCustodianPage() {
       })
       .catch(() => setSystemError('Failed to load session context. Please refresh.'))
       .finally(() => setUserLoading(false));
+
+    return () => {
+      stopCameraStream();
+    };
   }, []);
 
   const syncReceivingQueue = async (userRole: Role) => {
@@ -97,17 +115,136 @@ export default function ReceivingCustodianPage() {
     }
   };
 
-  const handleImageFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const fakeStoragePath = `/storage/assets/${Date.now()}-${file.name}`;
-      setAsssetImageFilePath(fakeStoragePath);
+  // Stop WebRTC stream and clear animation frames
+  const stopCameraStream = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        setImagePreviewUrl(reader.result as string);
+  // Initialize Native WebRTC Video Stream & BarcodeDetector Loop
+  const startCameraStream = async () => {
+    setQrScanStatus(null);
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('WebRTC Camera stream API is not supported on this browser context.');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+      });
+
+      mediaStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setIsCameraActive(true);
+        initBarcodeFrameScanner();
+      }
+    } catch (err: any) {
+      console.warn('Native camera stream unavailable:', err);
+      setQrScanStatus('Camera stream unavailable. Please use manual token entry or a USB hardware scanner.');
+      setIsCameraActive(false);
+    }
+  };
+
+  // Frame Scanner using Native Window BarcodeDetector
+  const initBarcodeFrameScanner = () => {
+    if (!('BarcodeDetector' in window)) {
+      return; // BarcodeDetector not supported in current browser; user falls back to hardware gun/manual entry
+    }
+
+    try {
+      // @ts-ignore - Native Web API
+      const barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code', 'code_128', 'data_matrix'] });
+
+      const scanFrame = async () => {
+        if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+          try {
+            const detectedCodes = await barcodeDetector.detect(videoRef.current);
+            if (detectedCodes && detectedCodes.length > 0) {
+              const rawToken = detectedCodes[0].rawValue;
+              if (rawToken) {
+                matchAndSelectPO(rawToken);
+                return; // Stop animation loop upon match
+              }
+            }
+          } catch {
+            // Frame analysis skip
+          }
+        }
+        animationFrameRef.current = requestAnimationFrame(scanFrame);
       };
-      reader.readAsDataURL(file);
+
+      animationFrameRef.current = requestAnimationFrame(scanFrame);
+    } catch (e) {
+      console.warn('BarcodeDetector initialization error:', e);
+    }
+  };
+
+  const matchAndSelectPO = (tokenQuery: string) => {
+    const cleanQuery = tokenQuery.trim();
+    const matchedPO = receivingQueue.find(
+      (po) =>
+        po.qrCodeToken === cleanQuery ||
+        po.poNumber === cleanQuery ||
+        po.id === cleanQuery
+    );
+
+    if (matchedPO) {
+      setPurchaseOrderId(matchedPO.id);
+      setQrScanStatus(null);
+      stopCameraStream();
+      setShowQrDecoderModal(false);
+      setScannedQrInput('');
+      setTransactionSuccess(`QR Tag matched cleanly to Purchase Order [${matchedPO.poNumber}]. Workspace auto-populated.`);
+    } else {
+      setQrScanStatus(`Discrepancy: Token [${cleanQuery.substring(0, 16)}...] does not match any shipment in active queue.`);
+    }
+  };
+
+  const handleManualQrSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scannedQrInput.trim()) {
+      setQrScanStatus('Please provide a valid PO QR Token code.');
+      return;
+    }
+    matchAndSelectPO(scannedQrInput);
+  };
+
+  const handleImageFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Instant local object URL preview
+    const localPreview = URL.createObjectURL(file);
+    setImagePreviewUrl(localPreview);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.url) {
+        setAsssetImageFilePath(result.url);
+      } else {
+        setSystemError(result.error || 'Failed to upload image payload to local server disk.');
+      }
+    } catch (err) {
+      console.error('File upload error:', err);
+      setSystemError('A network or server disconnect interrupted image storage.');
     }
   };
 
@@ -151,7 +288,7 @@ export default function ReceivingCustodianPage() {
         if (!response.ok) {
           if (response.status === 422 && result.errors) {
             setFieldErrors(result.errors);
-            throw new Error('Please check the highlighted fields below.');
+            throw new Error('Please review highlighted fields below.');
           }
           throw new Error(result.error || 'A remote exception occurred while recording intake.');
         }
@@ -177,7 +314,7 @@ export default function ReceivingCustodianPage() {
 
   if (userLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500 font-sans">
         Loading session context…
       </div>
     );
@@ -196,17 +333,20 @@ export default function ReceivingCustodianPage() {
 
   const queueTasks: QueueTask[] = receivingQueue.map((poNode) => ({
     id: poNode.id,
-    title: poNode.purchaseRequest.justification,
+    title: deriveItemSummaryTitle(poNode.purchaseRequest.itemsPayload, poNode.purchaseRequest.justification),
     subtitle: poNode.poNumber,
     dateLabel: new Date(poNode.purchaseRequest.createdAt).toLocaleDateString(),
+    justificationPreview: poNode.purchaseRequest.justification,
   }));
+
+  const selectedPONode = receivingQueue.find((po) => po.id === purchaseOrderId);
 
   return (
     <PageShell>
       <StageHeader
         eyebrow="Step 5 of 6 · Cargo Intake & Photo Inspection"
-        title="Cargo Intake & Physical Photo Inspection"
-        description="Inspect arriving shipments, capture physical hardware photos, attach invoices, and generate receiving reports."
+        title="Cargo Intake & Physical Photo Inspection Terminal"
+        description="Inspect arriving shipments, scan asset QR tags via WebRTC or hardware scanners, capture physical hardware photos, and record compliance intake reports."
         meta={{ label: 'Signed in as', value: activeUser.email }}
       />
 
@@ -222,14 +362,34 @@ export default function ReceivingCustodianPage() {
         onSelect={setPurchaseOrderId}
       >
         <form onSubmit={handleReceivingCommit} className="space-y-6">
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Shipment Identification</span>
+              <span className="text-xs font-mono font-bold text-slate-900">
+                {selectedPONode ? `PO: ${selectedPONode.poNumber} (${selectedPONode.purchaseRequest.department.code})` : 'No Shipment Selected'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowQrDecoderModal(true);
+                startCameraStream();
+              }}
+              className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+            >
+              <span>🔳 Open WebRTC QR Scanner</span>
+            </button>
+          </div>
+
           <div>
-            <FieldLabel>Target Purchase Order (UUID)</FieldLabel>
+            <FieldLabel>Target Purchase Order (UUID Reference)</FieldLabel>
             <input
               type="text"
               required
               readOnly
               className={`${inputClass(!!fieldErrors?.purchaseOrderId)} font-mono bg-slate-100 text-slate-600 cursor-not-allowed`}
-              placeholder="Select a shipment from the queue..."
+              placeholder="Select a shipment from the queue or scan QR badge..."
               value={purchaseOrderId}
             />
             {fieldErrors?.purchaseOrderId?._errors && (
@@ -243,9 +403,9 @@ export default function ReceivingCustodianPage() {
               <button
                 type="button"
                 onClick={() => setCondition('Good')}
-                className={`py-2.5 text-xs sm:text-sm font-semibold rounded-lg border transition min-h-[44px] cursor-pointer ${
+                className={`py-2.5 text-xs sm:text-sm font-semibold rounded-lg border transition min-h-[44px] cursor-pointer active:scale-95 ${
                   condition === 'Good'
-                    ? 'bg-emerald-700 border-emerald-700 text-white shadow-xs'
+                    ? 'bg-emerald-700 border-emerald-700 text-white shadow-xs font-bold'
                     : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
                 }`}
               >
@@ -254,9 +414,9 @@ export default function ReceivingCustodianPage() {
               <button
                 type="button"
                 onClick={() => setCondition('Damaged')}
-                className={`py-2.5 text-xs sm:text-sm font-semibold rounded-lg border transition min-h-[44px] cursor-pointer ${
+                className={`py-2.5 text-xs sm:text-sm font-semibold rounded-lg border transition min-h-[44px] cursor-pointer active:scale-95 ${
                   condition === 'Damaged'
-                    ? 'bg-rose-600 border-rose-600 text-white shadow-xs'
+                    ? 'bg-rose-600 border-rose-600 text-white shadow-xs font-bold'
                     : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
                 }`}
               >
@@ -276,7 +436,7 @@ export default function ReceivingCustodianPage() {
                     alt="Physical Hardware Intake"
                     className="max-h-48 rounded-lg mx-auto border border-slate-300 shadow-sm object-cover"
                   />
-                  <p className="text-[11px] font-mono text-slate-500">{asssetImageFilePath}</p>
+                  <p className="text-[11px] font-mono text-slate-500 break-all">{asssetImageFilePath}</p>
                 </div>
               ) : (
                 <div className="space-y-2 py-3">
@@ -284,8 +444,8 @@ export default function ReceivingCustodianPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <p className="text-xs font-semibold text-slate-700">Capture Hardware Photo or Drag File Here</p>
-                  <p className="text-[10px] text-slate-400">Supports JPG, PNG photographic proof of physical equipment</p>
+                  <p className="text-xs font-semibold text-slate-700">Capture Hardware Photo or Upload File</p>
+                  <p className="text-[10px] text-slate-400">Photographic proof of physical equipment condition is mandatory</p>
                 </div>
               )}
               <input
@@ -354,6 +514,107 @@ export default function ReceivingCustodianPage() {
           </div>
         </form>
       </ReviewWorkspace>
+
+      {/* Live WebRTC Camera & Hardware Scanner Decoder Modal */}
+      {showQrDecoderModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 font-sans">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                Live WebRTC &amp; Hardware Scanner Terminal
+              </h3>
+              <button
+                onClick={() => {
+                  stopCameraStream();
+                  setShowQrDecoderModal(false);
+                  setQrScanStatus(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Live Camera Feed Viewport */}
+            <div className="relative bg-slate-950 rounded-xl overflow-hidden aspect-video border border-slate-800 flex items-center justify-center">
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+              {!isCameraActive && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-slate-900/80 text-slate-400 text-xs">
+                  <span>📷 Live Viewport Offline</span>
+                  <span className="text-[10px] mt-1 text-slate-500">Camera stream stopped or permissions blocked</span>
+                </div>
+              )}
+              {isCameraActive && (
+                <div className="absolute inset-0 pointer-events-none border-2 border-emerald-500/40 rounded-xl flex items-center justify-center">
+                  <div className="w-48 h-28 border-2 border-dashed border-emerald-400 rounded-lg animate-pulse" />
+                </div>
+              )}
+            </div>
+
+            {qrScanStatus && (
+              <div className="p-3 bg-rose-50 border-l-4 border-rose-500 rounded-r text-rose-700 text-xs font-semibold">
+                {qrScanStatus}
+              </div>
+            )}
+
+            <form onSubmit={handleManualQrSubmit} className="space-y-3">
+              <div>
+                <FieldLabel>QR Cryptographic Token / PO Number</FieldLabel>
+                <input
+                  type="text"
+                  autoFocus
+                  className="w-full h-10 px-3 font-mono text-xs border border-slate-300 rounded-lg outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                  placeholder="e.g. PO-TOKEN-XXXX-XXXX or PO-2026-8891"
+                  value={scannedQrInput}
+                  onChange={(e) => setScannedQrInput(e.target.value)}
+                />
+              </div>
+
+              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1.5 text-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Unreceived Orders</span>
+                <div className="flex flex-wrap gap-1 justify-center max-h-24 overflow-y-auto">
+                  {receivingQueue.map((po) => (
+                    <button
+                      key={po.id}
+                      type="button"
+                      onClick={() => setScannedQrInput(po.qrCodeToken || po.poNumber)}
+                      className="text-[9px] font-mono font-bold bg-white hover:bg-emerald-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 transition cursor-pointer"
+                    >
+                      {po.poNumber}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopCameraStream();
+                    setShowQrDecoderModal(false);
+                  }}
+                  className="px-3 py-2 text-slate-600 font-semibold text-xs rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs rounded-lg transition cursor-pointer"
+                >
+                  Decode &amp; Select PO
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
+
     </PageShell>
   );
 }
