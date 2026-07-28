@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PRStatus, Role } from '@prisma/client';
+import { PRStatus, Role, PaymentType } from '@prisma/client';
 import { prisma } from '@/shared/prisma';
 import { CreatePOSchema } from '@/validation/po.schema';
 import { authorizeRequest } from '@/shared/rbac';
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { purchaseRequestId, poNumber } = validation.data;
+    const { purchaseRequestId, poNumber, paymentType } = validation.data;
 
     const transactionResult = await prisma.$transaction(async (tx) => {
       const targetPR = await tx.purchaseRequest.findUnique({
@@ -46,18 +46,24 @@ export async function POST(request: NextRequest) {
 
       const generatedQrToken = `PO-TOKEN-${crypto.randomUUID()}`;
 
+      // Branch workflow state based on purchase payment modality
+      const targetPRStatus = paymentType === 'CREDIT_TERMS' 
+        ? PRStatus.Ready_for_Purchase 
+        : PRStatus.Awaiting_Check_Issuance;
+
       const newPO = await tx.purchaseOrder.create({
         data: {
           poNumber: poNumber,
           purchaseRequestId: purchaseRequestId,
           qrCodeToken: generatedQrToken,
-          isCheckIssued: false
+          paymentType: paymentType as PaymentType,
+          isCheckIssued: paymentType === 'CREDIT_TERMS' ? true : false
         }
       });
 
       await tx.purchaseRequest.update({
         where: { id: purchaseRequestId },
-        data: { status: PRStatus.Awaiting_Check_Issuance }
+        data: { status: targetPRStatus }
       });
 
       await tx.auditLog.create({
@@ -65,8 +71,10 @@ export async function POST(request: NextRequest) {
           prId: purchaseRequestId,
           actorId: activeUser.id,
           previousState: PRStatus.Approved_Awaiting_PO,
-          newState: PRStatus.Awaiting_Check_Issuance,
-          remarks: `Authoritative Purchase Order bound: ${poNumber}. Unique Cryptographic Tag Generated.`
+          newState: targetPRStatus,
+          remarks: paymentType === 'CREDIT_TERMS'
+            ? `Authoritative PO bound under CREDIT / CHARGE TERMS: ${poNumber}. Direct transmission to supplier on 30-day terms; bypassed pre-purchase check release.`
+            : `Authoritative PO bound under CASH / CHECK MODALITY: ${poNumber}. Unique Cryptographic Tag Generated.`
         }
       });
 
