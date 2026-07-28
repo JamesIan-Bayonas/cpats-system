@@ -28,6 +28,7 @@ interface ZodSubErrors {
 interface ZodFormErrors {
   purchaseRequestId?: ZodSubErrors;
   poNumber?: ZodSubErrors;
+  paymentType?: ZodSubErrors;
 }
 
 interface ApprovedPRQueueNode {
@@ -48,11 +49,13 @@ export default function NewPurchaseOrderPage() {
 
   const [purchaseRequestId, setPurchaseRequestId] = useState<string>('');
   const [poNumber, setPoNumber] = useState<string>('');
+  const [paymentType, setPaymentType] = useState<'CASH_CHECK' | 'CREDIT_TERMS'>('CASH_CHECK');
   const [custodyConfirmed, setCustodyConfirmed] = useState<boolean>(false);
 
   const [createdPoDetails, setCreatedPoDetails] = useState<{
     poNumber: string;
     qrCodeToken: string;
+    paymentType: string;
     departmentCode?: string;
     prId?: string;
   } | null>(null);
@@ -116,7 +119,7 @@ export default function NewPurchaseOrderPage() {
     }
 
     if (!custodyConfirmed) {
-      setRuntimeError('You must confirm custody and preparation of the hard copy before proceeding.');
+      setRuntimeError('You must confirm custody and preparation of the Purchase Order before proceeding.');
       return;
     }
 
@@ -127,7 +130,7 @@ export default function NewPurchaseOrderPage() {
         const response = await fetch('/api/po/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ purchaseRequestId, poNumber }),
+          body: JSON.stringify({ purchaseRequestId, poNumber, paymentType }),
         });
 
         const result = await response.json();
@@ -143,14 +146,20 @@ export default function NewPurchaseOrderPage() {
         setCreatedPoDetails({
           poNumber: result.data.poNumber,
           qrCodeToken: result.data.qrCodeToken,
+          paymentType: result.data.paymentType,
           departmentCode: selectedPR?.department.code || 'DMC',
           prId: purchaseRequestId,
         });
 
-        setTransactionSuccess(`Purchase Order [${poNumber}] successfully generated and bound with QR token.`);
+        const statusNotice = paymentType === 'CREDIT_TERMS'
+          ? 'Bound on CREDIT TERMS (Charge Account). Transmitted directly to supplier; ready for cargo delivery.'
+          : 'Bound on CASH / CHECK terms. Routed to Business Office for check issuance.';
+
+        setTransactionSuccess(`Purchase Order [${poNumber}] generated successfully. ${statusNotice}`);
         
         setPurchaseRequestId('');
         setPoNumber('');
+        setPaymentType('CASH_CHECK');
         setCustodyConfirmed(false);
         
         await syncPurchasingQueue(activeUser.role);
@@ -191,9 +200,9 @@ export default function NewPurchaseOrderPage() {
   return (
     <PageShell>
       <StageHeader
-        eyebrow="Step 4-A of 6 · PO Generation & QR Tagging"
+        eyebrow="Step 4-A of 6 · PO Generation & Modality Selection"
         title="Generate Purchase Order & Asset QR Tag"
-        description="Bind approved requisitions to official Purchase Order numbers and generate cryptographic QR barcode tags for physical asset tagging."
+        description="Bind approved requisitions to official PO numbers, select payment modality (Cash/Check vs Credit Terms), and generate cryptographic QR barcode tags."
         meta={{ label: 'Signed in as', value: activeUser.email }}
       />
 
@@ -210,6 +219,13 @@ export default function NewPurchaseOrderPage() {
                 </span>
                 <span className="text-[10px] font-mono font-bold uppercase text-emerald-200 bg-emerald-900/80 px-2.5 py-1 rounded border border-emerald-700">
                   Dept: {createdPoDetails.departmentCode}
+                </span>
+                <span className={`text-[10px] font-mono font-bold uppercase px-2.5 py-1 rounded border ${
+                  createdPoDetails.paymentType === 'CREDIT_TERMS' 
+                    ? 'bg-amber-900/90 text-amber-200 border-amber-700' 
+                    : 'bg-emerald-900/80 text-emerald-200 border-emerald-700'
+                }`}>
+                  Modality: {createdPoDetails.paymentType.replace('_', ' ')}
                 </span>
               </div>
               <h3 className="text-3xl font-black tracking-tight text-white">{createdPoDetails.poNumber}</h3>
@@ -282,6 +298,50 @@ export default function NewPurchaseOrderPage() {
             )}
           </div>
 
+          <div>
+            <FieldLabel>Procurement Payment Modality</FieldLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setPaymentType('CASH_CHECK')}
+                className={`p-3.5 text-left rounded-xl border transition-all cursor-pointer ${
+                  paymentType === 'CASH_CHECK'
+                    ? 'border-emerald-700 bg-emerald-50/80 ring-2 ring-emerald-700/20'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900">💵 Cash / Check Purchase</span>
+                  {paymentType === 'CASH_CHECK' && <span className="text-emerald-700 text-xs font-bold">✓ Selected</span>}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                  Requires Business Office check release prior to item purchase. Transitions to <code className="text-slate-700 font-mono text-[10px]">Awaiting_Check_Issuance</code>.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentType('CREDIT_TERMS')}
+                className={`p-3.5 text-left rounded-xl border transition-all cursor-pointer ${
+                  paymentType === 'CREDIT_TERMS'
+                    ? 'border-amber-600 bg-amber-50/80 ring-2 ring-amber-600/20'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900">📄 Credit / Charge Terms ("Utang")</span>
+                  {paymentType === 'CREDIT_TERMS' && <span className="text-amber-700 text-xs font-bold">✓ Selected</span>}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                  30-day net billing with accredited supplier. Bypasses pre-purchase check release and routes directly to <code className="text-slate-700 font-mono text-[10px]">Ready_for_Purchase</code>.
+                </p>
+              </button>
+            </div>
+            {validationErrors?.paymentType?._errors && (
+              <FieldError>{validationErrors.paymentType._errors[0]}</FieldError>
+            )}
+          </div>
+
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">
               Mandatory Preparation Check
@@ -291,7 +351,7 @@ export default function NewPurchaseOrderPage() {
               checked={custodyConfirmed}
               onChange={setCustodyConfirmed}
               label="Confirm PO Preparation & Custody"
-              description="I affirm that the hard copy of this Purchase Order has been prepared, printed, and is ready for transmission to the Business Office or Supplier."
+              description="I affirm that the hard copy of this Purchase Order has been prepared, printed, and is ready for transmission."
             />
           </div>
 

@@ -31,12 +31,33 @@ interface ZodFormErrors {
   remarks?: ZodSubErrors;
 }
 
+interface ItemPayloadNode {
+  itemName: string;
+  quantity: number;
+  unitPrice: number;
+}
+
 interface PendingPRNode {
   id: string;
   justification: string;
   status: PRStatus;
   createdAt: string;
   department: { code: string; name: string };
+  itemsPayload?: ItemPayloadNode[] | unknown;
+}
+
+function deriveItemSummaryTitle(itemsPayload: unknown): string {
+  if (!itemsPayload || !Array.isArray(itemsPayload) || itemsPayload.length === 0) {
+    return 'Purchase Requisition';
+  }
+  const items = itemsPayload as ItemPayloadNode[];
+  const firstItemName = items[0]?.itemName?.trim() || 'Item Requisition';
+  const firstItemQty = items[0]?.quantity || 1;
+
+  if (items.length === 1) {
+    return `${firstItemName} (x${firstItemQty})`;
+  }
+  return `${firstItemName} (+${items.length - 1} more item${items.length > 2 ? 's' : ''})`;
 }
 
 export default function BusinessOfficeEvaluationPage() {
@@ -170,9 +191,10 @@ export default function BusinessOfficeEvaluationPage() {
 
   const queueTasks: QueueTask[] = activeQueue.map((task) => ({
     id: task.id,
-    title: task.justification,
+    title: deriveItemSummaryTitle(task.itemsPayload),
     subtitle: task.department.code,
     dateLabel: new Date(task.createdAt).toLocaleDateString(),
+    description: task.justification,
   }));
 
   return (
