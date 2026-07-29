@@ -1,4 +1,3 @@
-// src/components/ui/EnterpriseHeader.tsx
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -61,9 +60,10 @@ export default function EnterpriseHeader({ activeRole: propRole, departmentCode:
   const roleLabel = ROLE_LABELS[displayRole] ?? String(displayRole).replace(/_/g, ' ');
   const initial = roleLabel.charAt(0);
 
-  // Define workflow routes and their permitted roles (client-side safe)
+  // Define workflow routes and permitted roles
   const navigationSteps: NavigationStep[] = [
-    { name: 'Init PR', number: '01', href: '/dashboard/pr/new', allowedRoles: [Role.Requesting_Office] },
+    { name: 'Init PR', number: '01A', href: '/dashboard/pr/new', allowedRoles: [Role.Requesting_Office] },
+    { name: 'Track Requests', number: '01B', href: '/dashboard/pr/track', allowedRoles: [Role.Requesting_Office] },
     { name: 'Business Eval', number: '02', href: '/dashboard/pr/evaluate-business', allowedRoles: [Role.Business_Office] },
     { name: 'Admin Sign-Off', number: '03', href: '/dashboard/pr/approve-admin', allowedRoles: [Role.Admin_Office] },
     { name: 'PO Generation', number: '04A', href: '/dashboard/po/new', allowedRoles: [Role.Purchasing_Office] },
@@ -122,7 +122,7 @@ export default function EnterpriseHeader({ activeRole: propRole, departmentCode:
           </div>
         </div>
 
-        {/* Workflow Stage Tabs - Rendered ONLY if the user has MULTIPLE authorized routes (e.g., Business Office) */}
+        {/* Workflow Stage Tabs */}
         {authorizedSteps.length > 1 && (
           <nav className="flex space-x-1.5 overflow-x-auto pb-3 no-scrollbar" aria-label="Procurement workflow stages">
             {authorizedSteps.map((step) => {

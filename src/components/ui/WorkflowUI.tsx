@@ -226,8 +226,8 @@ export function DecisionButtonGroup({
   value,
   onChange,
   approveLabel = '✓ Approve',
-  returnLabel = '↺ Recalibrate',
-  declineLabel = '✕ Reject',
+  returnLabel = '↶ Return for Correction',
+  declineLabel = '✕ Decline',
 }: {
   value: string;
   onChange: (v: 'APPROVE' | 'RETURN_FOR_CORRECTION' | 'DECLINE') => void;
