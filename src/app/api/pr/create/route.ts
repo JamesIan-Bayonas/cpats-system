@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { justification, isDirectPoBypass, items } = validation.data;
+    const { justification, isDirectPoBypass, adminProofFilePath, items } = validation.data;
 
     const initialStatus = isDirectPoBypass ? PRStatus.Approved_Awaiting_PO : PRStatus.Pending_Business_Approval;
 
@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
           creatorId: activeUser.id,
           justification: justification,
           isDirectPoBypass: isDirectPoBypass,
+          adminProofFilePath: isDirectPoBypass ? adminProofFilePath : null,
           status: initialStatus,
           itemsPayload: items,
         },
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
           previousState: null,
           newState: initialStatus,
           remarks: isDirectPoBypass
-            ? "PR initialized using Executive Authorization Document. System steps bypassed."
+            ? `Requisition initialized via Executive Pre-Approved Letter Bypass. Proof document bound: [${adminProofFilePath}]. Standard Business and Admin Office reviews bypassed.`
             : "Purchase request created and submitted to Business Office for evaluation.",
         },
       });

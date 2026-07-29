@@ -4,6 +4,7 @@ import { getAuthenticatedUser, AuthUser } from '@/shared/session';
 
 export const ROUTE_ROLE_MAP: Record<string, Role[]> = {
   '/dashboard/pr/new': [Role.Requesting_Office],
+  '/dashboard/pr/track': [Role.Requesting_Office],
   '/dashboard/pr/evaluate-business': [Role.Business_Office],
   '/dashboard/pr/approve-admin': [Role.Admin_Office],
   '/dashboard/po/new': [Role.Purchasing_Office],
