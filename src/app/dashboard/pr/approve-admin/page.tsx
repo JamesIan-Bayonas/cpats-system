@@ -1,4 +1,3 @@
-// File: src/app/dashboard/pr/approve-admin/page.tsx
 'use client';
 
 import React, { useState, useEffect, useTransition } from 'react';
@@ -34,13 +33,14 @@ interface ZodFormErrors {
 interface ItemPayloadNode {
   itemName: string;
   quantity: number;
-  unitPrice: number;
+  unitPrice?: number;
 }
 
 interface PendingAdminPRNode {
   id: string;
   justification: string;
   status: PRStatus;
+  isDirectPoBypass?: boolean;
   createdAt: string;
   department: {
     code: string;
@@ -60,7 +60,7 @@ function deriveItemSummaryTitle(itemsPayload: unknown): string {
   if (items.length === 1) {
     return `${firstItemName} (x${firstItemQty})`;
   }
-  return `${firstItemName} (+${items.length - 1} more item${items.length > 2 ? 's' : ''})`;
+  return `${firstItemName} (x${firstItemQty}) +${items.length - 1} more item${items.length - 1 > 1 ? 's' : ''}`;
 }
 
 export default function AdminOfficeApprovalPage() {
@@ -74,6 +74,9 @@ export default function AdminOfficeApprovalPage() {
   const [prId, setPrId] = useState<string>('');
   const [action, setAction] = useState<'APPROVE' | 'DECLINE' | 'RETURN_FOR_CORRECTION' | ''>('');
   const [remarks, setRemarks] = useState<string>('');
+  
+  // Signatory Presence Mode Selector (Option 1 vs On-Site)
+  const [signatoryMode, setSignatoryMode] = useState<'ON_SITE' | 'REMOTE_OPTION_1'>('ON_SITE');
   const [adminProofFilePath, setAdminProofFilePath] = useState<string>('');
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
@@ -99,7 +102,6 @@ export default function AdminOfficeApprovalPage() {
           setActiveUser(res.data);
           syncAdminWorkspaceQueue(res.data.role);
         } else {
-          // Fallback static profile if unauthenticated in dev
           setActiveUser({
             id: 'admin-approver-uuid-static-789',
             email: 'vp-admin@dmc.edu.ph',
@@ -137,28 +139,27 @@ export default function AdminOfficeApprovalPage() {
   };
 
   const handleProofFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (file) {
-    setAttachedFileName(file.name);
+    const file = e.target.files?.[0];
+    if (file) {
+      setAttachedFileName(file.name);
 
-    const formData = new FormData();
-    formData.append('file', file);
+      const formData = new FormData();
+      formData.append('file', file);
 
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (res.ok && data.url) {
-        // Sets a real, clickable link like "/uploads/1785080140890-send-image.png"
-        setAdminProofFilePath(data.url);
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok && data.url) {
+          setAdminProofFilePath(data.url);
+        }
+      } catch (err) {
+        console.error('Upload failed:', err);
       }
-    } catch (err) {
-      console.error('Upload failed:', err);
     }
-  }
-};
+  };
 
   const handleAdminApproval = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,10 +183,22 @@ export default function AdminOfficeApprovalPage() {
         setSystemError('COMPLIANCE EXCEPTION: All three regulatory authorization check-boxes must be actively validated.');
         return;
       }
-      if (!adminProofFilePath) {
-        setSystemError('AUDIT TRAIL FAILURE: Attached signature verification proof path or file upload is required for executive sign-off.');
+      if (signatoryMode === 'REMOTE_OPTION_1' && (!adminProofFilePath || adminProofFilePath.trim().length === 0)) {
+        setSystemError('AUDIT TRAIL FAILURE: Remote Channel Verification (Option 1) strictly requires an attached proof file or screenshot.');
         return;
       }
+    }
+
+    // Auto-generate remarks for approval if left empty by user
+    const finalRemarks = action === 'APPROVE'
+      ? (remarks.trim().length >= 5 
+          ? remarks 
+          : `Executive sign-off granted via ${signatoryMode === 'ON_SITE' ? 'On-Site Direct Approval (Head of Office Present)' : 'Remote Channel Verification (Option 1 Protocol)'}.`)
+      : remarks;
+
+    if (action !== 'APPROVE' && finalRemarks.trim().length < 5) {
+      setSystemError('COMPLIANCE EXCEPTION: Audit evaluation remarks are mandatory for recalibrating or declining requests (min. 5 characters).');
+      return;
     }
 
     startTransition(async () => {
@@ -193,8 +206,8 @@ export default function AdminOfficeApprovalPage() {
         const payload = {
           prId,
           action,
-          remarks,
-          ...(action === 'APPROVE' && { adminProofFilePath }),
+          remarks: finalRemarks,
+          ...(action === 'APPROVE' && adminProofFilePath ? { adminProofFilePath } : {}),
         };
 
         const response = await fetch('/api/pr/review', {
@@ -213,11 +226,12 @@ export default function AdminOfficeApprovalPage() {
           throw new Error(result.error || 'The remote execution node rolled back the database transaction.');
         }
 
-        setSuccessStatus(`Executive order finalized. Request [${prId}] successfully transitioned to state: ${action}.`);
+        setSuccessStatus(`Executive order finalized. Request [${prId.substring(0, 8)}...] transitioned to: ${action}.`);
 
         setPrId('');
         setAction('');
         setRemarks('');
+        setSignatoryMode('ON_SITE');
         setAdminProofFilePath('');
         setAttachedFileName(null);
         setCheckedPR(false);
@@ -256,8 +270,19 @@ export default function AdminOfficeApprovalPage() {
     title: deriveItemSummaryTitle(task.itemsPayload),
     subtitle: task.department?.code || 'OVPA',
     dateLabel: new Date(task.createdAt).toLocaleDateString(),
-    description: task.justification,
+    justificationPreview: task.justification,
   }));
+
+  const selectedPR = adminQueue.find((req) => req.id === prId);
+  const itemsList: ItemPayloadNode[] = selectedPR && Array.isArray(selectedPR.itemsPayload)
+    ? (selectedPR.itemsPayload as ItemPayloadNode[])
+    : [];
+
+  const hasPrices = itemsList.some((item) => typeof item.unitPrice === 'number' && item.unitPrice > 0);
+  const calculatedGrandTotal = itemsList.reduce((acc, item) => {
+    const price = item.unitPrice || 0;
+    return acc + (price * item.quantity);
+  }, 0);
 
   return (
     <PageShell>
@@ -293,10 +318,92 @@ export default function AdminOfficeApprovalPage() {
             {fieldErrors?.prId?._errors && <FieldError>{fieldErrors.prId._errors[0]}</FieldError>}
           </div>
 
-          <div>
+          {/* REQUISITION INSPECTION PANEL */}
+          {selectedPR ? (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
+                    Originating Department
+                  </span>
+                  <span className="text-xs font-bold text-slate-900">
+                    {selectedPR.department.name} ({selectedPR.department.code})
+                  </span>
+                </div>
+                {selectedPR.isDirectPoBypass && (
+                  <span className="px-2 py-0.5 text-[9px] font-bold font-mono uppercase bg-emerald-100 text-emerald-800 rounded border border-emerald-300">
+                    Bypass Active
+                  </span>
+                )}
+              </div>
+
+              {/* OPERATIONAL JUSTIFICATION */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 font-mono">
+                  Operational Justification & Purpose
+                </span>
+                <div className="bg-white p-3 rounded-lg border border-slate-200 text-xs text-slate-700 leading-relaxed italic">
+                  "{selectedPR.justification}"
+                </div>
+              </div>
+
+              {/* ITEMIZED REQUISITION SCHEDULE */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                    Itemized Schedule ({itemsList.length} {itemsList.length === 1 ? 'Line Item' : 'Line Items'})
+                  </span>
+                  {hasPrices && (
+                    <span className="text-xs font-mono font-bold text-emerald-700">
+                      Est. Total: ₱{calculatedGrandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase font-mono">
+                        <th className="p-2.5">Item Description & Specifications</th>
+                        <th className="p-2.5 text-center whitespace-nowrap">Qty</th>
+                        {hasPrices && <th className="p-2.5 text-right whitespace-nowrap">Unit Price</th>}
+                        {hasPrices && <th className="p-2.5 text-right whitespace-nowrap">Subtotal</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {itemsList.map((item, idx) => {
+                        const unitPrice = item.unitPrice || 0;
+                        const subtotal = unitPrice * item.quantity;
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/60">
+                            <td className="p-2.5 font-medium text-slate-900">{item.itemName}</td>
+                            <td className="p-2.5 text-center font-mono font-bold text-slate-700">{item.quantity}</td>
+                            {hasPrices && (
+                              <td className="p-2.5 text-right font-mono text-slate-500">
+                                {unitPrice > 0 ? `₱${unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
+                              </td>
+                            )}
+                            {hasPrices && (
+                              <td className="p-2.5 text-right font-mono font-bold text-slate-800">
+                                {subtotal > 0 ? `₱${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs">
+              Select a requisition from the queue list on the left to inspect its details.
+            </div>
+          )}
+
+         <div>
             <FieldLabel>Authoritative Executive Action Selection</FieldLabel>
-            
-            {/* Color Hierarchy Restored: Emerald for Approve, Amber for Recalibrate, Rose for Reject */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
@@ -319,7 +426,7 @@ export default function AdminOfficeApprovalPage() {
                     : 'bg-white border-slate-300 text-slate-700 hover:bg-amber-50 hover:text-amber-800'
                 }`}
               >
-                ↶ Recalibrate
+                ↶ Return for Correction
               </button>
 
               <button
@@ -338,9 +445,56 @@ export default function AdminOfficeApprovalPage() {
           </div>
 
           {action === 'APPROVE' && (
-            <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-4">
+            <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+              
+              {/* SIGNATORY PRESENCE SELECTOR */}
+              <div className="border-b border-slate-200 pb-3.5 space-y-2">
+                <FieldLabel>Executive Signatory Location & Method</FieldLabel>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignatoryMode('ON_SITE');
+                      setAdminProofFilePath('');
+                      setAttachedFileName(null);
+                    }}
+                    className={`p-3 text-left rounded-xl border transition-all cursor-pointer ${
+                      signatoryMode === 'ON_SITE'
+                        ? 'border-emerald-700 bg-emerald-50/80 ring-2 ring-emerald-700/20'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900">🏢 On-Site Direct Sign-off</span>
+                      {signatoryMode === 'ON_SITE' && <span className="text-emerald-700 text-xs font-bold">✓ Active</span>}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      VP / Head of Office is physically present in the campus office. Proof upload is optional.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSignatoryMode('REMOTE_OPTION_1')}
+                    className={`p-3 text-left rounded-xl border transition-all cursor-pointer ${
+                      signatoryMode === 'REMOTE_OPTION_1'
+                        ? 'border-indigo-600 bg-indigo-50/80 ring-2 ring-indigo-600/20'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900">📱 Remote Verification (Option 1)</span>
+                      {signatoryMode === 'REMOTE_OPTION_1' && <span className="text-indigo-700 text-xs font-bold">✓ Active</span>}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      Head of Office is off-campus on an errand. Attaching Viber/messaging proof screenshot is mandatory.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               <div>
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-3">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-3 font-mono">
                   Mandatory Regulatory Authorization Clearances
                 </span>
                 <div className="space-y-2.5">
@@ -368,49 +522,67 @@ export default function AdminOfficeApprovalPage() {
                 </div>
               </div>
 
-              {/* DUAL FILE UPLOAD & URL RESOLVER COMPONENT */}
-              <div className="border-t border-slate-200 pt-3.5 space-y-3">
-                <FieldLabel>Executive Approval Proof Attachment (PDF / Image / URL)</FieldLabel>
+              {/* REFACTORED CLEAN PROOF ATTACHMENT WIDGET (NO RAW TEXT INPUT) */}
+              <div className="border-t border-slate-200 pt-3.5 space-y-2">
+                <div className="flex justify-between items-center">
+                  <FieldLabel>Executive Approval Proof Attachment</FieldLabel>
+                  <span className={`text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded border ${
+                    signatoryMode === 'REMOTE_OPTION_1'
+                      ? 'bg-rose-50 text-rose-700 border-rose-200'
+                      : 'bg-slate-100 text-slate-500 border-slate-200'
+                  }`}>
+                    {signatoryMode === 'REMOTE_OPTION_1' ? 'Mandatory for Option 1' : 'Optional for On-Site'}
+                  </span>
+                </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-                  
-                  {/* Option A: Direct File Upload Picker */}
-                  <div className="border-2 border-dashed border-slate-300 rounded-xl p-3 bg-white text-center hover:border-emerald-600 transition">
-                    <input
-                      type="file"
-                      accept="application/pdf,image/*"
-                      onChange={handleProofFileUpload}
-                      className="hidden"
-                      id="proof-file-input"
-                    />
-                    <label
-                      htmlFor="proof-file-input"
-                      className="cursor-pointer block space-y-1"
-                    >
-                      <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 inline-block">
-                        📁 {attachedFileName ? 'Change Attached File' : 'Upload Proof File (PDF / Image)'}
-                      </span>
+                <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 bg-white hover:border-emerald-600 transition">
+                  {attachedFileName || adminProofFilePath ? (
+                    <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                      <div className="flex items-center space-x-3 overflow-hidden">
+                        <span className="text-xl shrink-0">📄</span>
+                        <div className="truncate">
+                          <span className="block text-xs font-bold text-emerald-900 truncate">
+                            {attachedFileName || 'Proof Document Attached'}
+                          </span>
+                          <span className="block text-[10px] font-mono text-emerald-700 truncate">
+                            {adminProofFilePath}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdminProofFilePath('');
+                          setAttachedFileName(null);
+                        }}
+                        className="text-xs font-bold text-rose-600 hover:text-rose-800 px-2.5 py-1 rounded bg-white border border-rose-200 hover:bg-rose-50 transition shrink-0 cursor-pointer active:scale-95"
+                      >
+                        Remove File
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-center space-y-2">
+                      <input
+                        type="file"
+                        accept="application/pdf,image/*"
+                        onChange={handleProofFileUpload}
+                        className="hidden"
+                        id="proof-file-input"
+                      />
+                      <label
+                        htmlFor="proof-file-input"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-2xs active:scale-95"
+                      >
+                        <span>📁</span>
+                        <span>Upload Proof File (PDF / Viber Screenshot)</span>
+                      </label>
                       <p className="text-[10px] text-slate-400">
-                        {attachedFileName || 'Select Viber screenshot or signed approval letter'}
+                        {signatoryMode === 'REMOTE_OPTION_1'
+                          ? 'Upload official messaging screenshot or endorsement slip from Head of Office'
+                          : 'Optional: Attach physical document scan if available'}
                       </p>
-                    </label>
-                  </div>
-
-                  {/* Option B: Direct Path String Preview */}
-                  <div>
-                    <input
-                      type="url"
-                      required={action === 'APPROVE'}
-                      className={`${inputClass(!!fieldErrors?.adminProofFilePath)} font-mono text-xs`}
-                      placeholder="https://storage.dmc.edu.ph/compliance/proofs/sign-auth-2026.pdf"
-                      value={adminProofFilePath}
-                      onChange={(e) => setAdminProofFilePath(e.target.value)}
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      System auto-populates resolved URL path upon file selection.
-                    </p>
-                  </div>
-
+                    </div>
+                  )}
                 </div>
 
                 {fieldErrors?.adminProofFilePath?._errors && (
@@ -420,26 +592,30 @@ export default function AdminOfficeApprovalPage() {
             </div>
           )}
 
-          <div>
-            <FieldLabel>Executive Audit Evaluation Remarks</FieldLabel>
-            <textarea
-              required
-              rows={3}
-              className={`${inputClass(!!fieldErrors?.remarks)} h-auto py-2.5`}
-              placeholder="Provide transparent procedural evaluation log detailing the reasoning for this command…"
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-            />
-            {fieldErrors?.remarks?._errors && <FieldError>{fieldErrors.remarks._errors[0]}</FieldError>}
-          </div>
+          {/* DYNAMIC AUDIT EVALUATION REMARKS */}
+          {(action === 'RETURN_FOR_CORRECTION' || action === 'DECLINE') && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+              <FieldLabel>
+                {action === 'RETURN_FOR_CORRECTION' ? 'Reason for Recalibration' : 'Reason for Rejection'}
+              </FieldLabel>
+              <textarea
+                required
+                rows={3}
+                className={`${inputClass(!!fieldErrors?.remarks)} h-auto py-2.5`}
+                placeholder={
+                  action === 'RETURN_FOR_CORRECTION'
+                    ? 'Detail specific corrections required for the department...'
+                    : 'Document justification for rejecting this executive request...'
+                }
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+              />
+              {fieldErrors?.remarks?._errors && <FieldError>{fieldErrors.remarks._errors[0]}</FieldError>}
+            </div>
+          )}
 
           <div className="border-t border-slate-200/80 pt-4 flex justify-end">
-            <ActionButton
-              type="submit"
-              disabled={isPending}
-              className="? 'bg-emerald-700 border-emerald-700 text-white shadow-md'
-                    : 'bg-white border-slate-300 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800'"
-            >
+            <ActionButton type="submit" disabled={isPending}>
               {isPending ? 'Committing Executive Order…' : 'Commit Executive Order'}
             </ActionButton>
           </div>

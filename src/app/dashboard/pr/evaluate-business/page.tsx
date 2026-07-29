@@ -1,4 +1,3 @@
-// File: src/app/dashboard/pr/evaluate-business/page.tsx
 'use client';
 
 import React, { useState, useEffect, useTransition } from 'react';
@@ -34,13 +33,15 @@ interface ZodFormErrors {
 interface ItemPayloadNode {
   itemName: string;
   quantity: number;
-  unitPrice: number;
+  unitPrice?: number;
 }
 
 interface PendingPRNode {
   id: string;
   justification: string;
   status: PRStatus;
+  isDirectPoBypass?: boolean;
+  adminProofFilePath?: string | null;
   createdAt: string;
   department: { code: string; name: string };
   itemsPayload?: ItemPayloadNode[] | unknown;
@@ -57,7 +58,7 @@ function deriveItemSummaryTitle(itemsPayload: unknown): string {
   if (items.length === 1) {
     return `${firstItemName} (x${firstItemQty})`;
   }
-  return `${firstItemName} (+${items.length - 1} more item${items.length > 2 ? 's' : ''})`;
+  return `${firstItemName} (x${firstItemQty}) +${items.length - 1} more item${items.length - 1 > 1 ? 's' : ''}`;
 }
 
 export default function BusinessOfficeEvaluationPage() {
@@ -135,13 +136,23 @@ export default function BusinessOfficeEvaluationPage() {
       setSystemError('Please select an evaluation action (Approve, Return for Correction, or Decline).');
       return;
     }
+    
+    // Inject a default audit compliance string if Approved. Ensure negative actions have user remarks.
+    const finalRemarks = evaluationAction === 'APPROVE' 
+      ? 'Approved by Business Office. Necessity and budget allocation verified.' 
+      : remarks;
+
+    if (evaluationAction !== 'APPROVE' && finalRemarks.trim().length < 5) {
+      setSystemError('Compliance Exception: You must provide a clear reason for returning or rejecting this request (minimum 5 characters).');
+      return;
+    }
 
     startTransition(async () => {
       try {
         const response = await fetch('/api/pr/evaluate-business', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prId: targetPrId, action: evaluationAction, remarks }),
+          body: JSON.stringify({ prId: targetPrId, action: evaluationAction, remarks: finalRemarks }),
         });
 
         const result = await response.json();
@@ -194,8 +205,19 @@ export default function BusinessOfficeEvaluationPage() {
     title: deriveItemSummaryTitle(task.itemsPayload),
     subtitle: task.department.code,
     dateLabel: new Date(task.createdAt).toLocaleDateString(),
-    description: task.justification,
+    justificationPreview: task.justification,
   }));
+
+  const selectedPR = activeQueue.find((req) => req.id === targetPrId);
+  const itemsList: ItemPayloadNode[] = selectedPR && Array.isArray(selectedPR.itemsPayload)
+    ? (selectedPR.itemsPayload as ItemPayloadNode[])
+    : [];
+
+  const hasPrices = itemsList.some((item) => typeof item.unitPrice === 'number' && item.unitPrice > 0);
+  const calculatedGrandTotal = itemsList.reduce((acc, item) => {
+    const price = item.unitPrice || 0;
+    return acc + (price * item.quantity);
+  }, 0);
 
   return (
     <PageShell>
@@ -231,6 +253,90 @@ export default function BusinessOfficeEvaluationPage() {
             {fieldErrors?.prId?._errors && <FieldError>{fieldErrors.prId._errors[0]}</FieldError>}
           </div>
 
+          {/* INSPECTION PANEL: OPERATIONAL JUSTIFICATION & ITEMIZED SCHEDULE */}
+          {selectedPR ? (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
+                    Originating Department
+                  </span>
+                  <span className="text-xs font-bold text-slate-900">
+                    {selectedPR.department.name} ({selectedPR.department.code})
+                  </span>
+                </div>
+                {selectedPR.isDirectPoBypass && (
+                  <span className="px-2 py-0.5 text-[9px] font-bold font-mono uppercase bg-emerald-100 text-emerald-800 rounded border border-emerald-300">
+                    Bypass Active
+                  </span>
+                )}
+              </div>
+
+              {/* OPERATIONAL JUSTIFICATION / PURPOSE */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 font-mono">
+                  Operational Justification & Purpose
+                </span>
+                <div className="bg-white p-3 rounded-lg border border-slate-200 text-xs text-slate-700 leading-relaxed italic">
+                  "{selectedPR.justification}"
+                </div>
+              </div>
+
+              {/* ITEMIZED REQUISITION SCHEDULE */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                    Itemized Schedule ({itemsList.length} {itemsList.length === 1 ? 'Line Item' : 'Line Items'})
+                  </span>
+                  {hasPrices && (
+                    <span className="text-xs font-mono font-bold text-emerald-700">
+                      Est. Total: ₱{calculatedGrandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase font-mono">
+                        <th className="p-2.5">Item Description & Specifications</th>
+                        <th className="p-2.5 text-center whitespace-nowrap">Qty</th>
+                        {hasPrices && <th className="p-2.5 text-right whitespace-nowrap">Unit Price</th>}
+                        {hasPrices && <th className="p-2.5 text-right whitespace-nowrap">Subtotal</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {itemsList.map((item, idx) => {
+                        const unitPrice = item.unitPrice || 0;
+                        const subtotal = unitPrice * item.quantity;
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/60">
+                            <td className="p-2.5 font-medium text-slate-900">{item.itemName}</td>
+                            <td className="p-2.5 text-center font-mono font-bold text-slate-700">{item.quantity}</td>
+                            {hasPrices && (
+                              <td className="p-2.5 text-right font-mono text-slate-500">
+                                {unitPrice > 0 ? `₱${unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
+                              </td>
+                            )}
+                            {hasPrices && (
+                              <td className="p-2.5 text-right font-mono font-bold text-slate-800">
+                                {subtotal > 0 ? `₱${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs">
+              Select a requisition from the queue list on the left to inspect its operational justification and itemized schedule.
+            </div>
+          )}
+
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-1">
               Required Verification Checks
@@ -257,18 +363,27 @@ export default function BusinessOfficeEvaluationPage() {
             {fieldErrors?.action?._errors && <FieldError>{fieldErrors.action._errors[0]}</FieldError>}
           </div>
 
-          <div>
-            <FieldLabel>Audit Evaluation Remarks</FieldLabel>
-            <textarea
-              required
-              rows={3}
-              className={inputClass(!!fieldErrors?.remarks)}
-              placeholder="Document evaluation rationale for audit trail transparency…"
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-            />
-            {fieldErrors?.remarks?._errors && <FieldError>{fieldErrors.remarks._errors[0]}</FieldError>}
-          </div>
+          {/* DYNAMIC AUDIT EVALUATION REMARKS */}
+          {(evaluationAction === 'RETURN_FOR_CORRECTION' || evaluationAction === 'DECLINE') && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+              <FieldLabel>
+                {evaluationAction === 'RETURN_FOR_CORRECTION' ? 'Reason for Recalibration' : 'Reason for Rejection'}
+              </FieldLabel>
+              <textarea
+                required
+                rows={3}
+                className={inputClass(!!fieldErrors?.remarks)}
+                placeholder={
+                  evaluationAction === 'RETURN_FOR_CORRECTION'
+                    ? 'Detail the specific corrections required (e.g., Change quantity, item specs unclear)...'
+                    : 'Document the reason for rejecting this request (e.g., Out of budget, invalid request)...'
+                }
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+              />
+              {fieldErrors?.remarks?._errors && <FieldError>{fieldErrors.remarks._errors[0]}</FieldError>}
+            </div>
+          )}<FieldLabel>Evaluation Decision</FieldLabel>
 
           <div className="border-t border-slate-100 pt-4 flex justify-end">
             <ActionButton type="submit" disabled={isPending}>
