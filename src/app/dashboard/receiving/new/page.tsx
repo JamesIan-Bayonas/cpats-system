@@ -29,6 +29,7 @@ interface ZodFormErrors {
   condition?: ZodSubErrors;
   invoiceFilePath?: ZodSubErrors;
   asssetImageFilePath?: ZodSubErrors;
+  remarks?: ZodSubErrors;
 }
 
 interface PendingPOQueueNode {
@@ -55,14 +56,20 @@ export default function ReceivingCustodianPage() {
   // Form State
   const [purchaseOrderId, setPurchaseOrderId] = useState<string>('');
   const [condition, setCondition] = useState<'Good' | 'Damaged' | ''>('');
-  const [invoiceFilePath, setInvoiceFilePath] = useState<string>('');
-  const [asssetImageFilePath, setAsssetImageFilePath] = useState<string>('');
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [remarks, setRemarks] = useState<string>('');
 
+  // Clean Upload States (No raw URLs exposed)
+  const [invoiceFilePath, setInvoiceFilePath] = useState<string>('');
+  const [invoiceFileName, setInvoiceFileName] = useState<string | null>(null);
+  
+  const [asssetImageFilePath, setAsssetImageFilePath] = useState<string>('');
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+
+  // Clearances
   const [quantityVerified, setQuantityVerified] = useState<boolean>(false);
   const [cameraViewportMapped, setCameraViewportMapped] = useState<boolean>(false);
 
+  // Queues
   const [receivingQueue, setReceivingQueue] = useState<PendingPOQueueNode[]>([]);
   const [queueLoading, setQueueLoading] = useState<boolean>(true);
 
@@ -115,7 +122,6 @@ export default function ReceivingCustodianPage() {
     }
   };
 
-  // Stop WebRTC stream and clear animation frames
   const stopCameraStream = () => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -128,7 +134,6 @@ export default function ReceivingCustodianPage() {
     setIsCameraActive(false);
   };
 
-  // Initialize Native WebRTC Video Stream & BarcodeDetector Loop
   const startCameraStream = async () => {
     setQrScanStatus(null);
     try {
@@ -154,11 +159,8 @@ export default function ReceivingCustodianPage() {
     }
   };
 
-  // Frame Scanner using Native Window BarcodeDetector
   const initBarcodeFrameScanner = () => {
-    if (!('BarcodeDetector' in window)) {
-      return; // BarcodeDetector not supported in current browser; user falls back to hardware gun/manual entry
-    }
+    if (!('BarcodeDetector' in window)) return;
 
     try {
       // @ts-ignore - Native Web API
@@ -172,7 +174,7 @@ export default function ReceivingCustodianPage() {
               const rawToken = detectedCodes[0].rawValue;
               if (rawToken) {
                 matchAndSelectPO(rawToken);
-                return; // Stop animation loop upon match
+                return;
               }
             }
           } catch {
@@ -181,7 +183,6 @@ export default function ReceivingCustodianPage() {
         }
         animationFrameRef.current = requestAnimationFrame(scanFrame);
       };
-
       animationFrameRef.current = requestAnimationFrame(scanFrame);
     } catch (e) {
       console.warn('BarcodeDetector initialization error:', e);
@@ -218,33 +219,49 @@ export default function ReceivingCustodianPage() {
     matchAndSelectPO(scannedQrInput);
   };
 
-  const handleImageFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInvoiceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Instant local object URL preview
-    const localPreview = URL.createObjectURL(file);
-    setImagePreviewUrl(localPreview);
+    setInvoiceFileName(file.name);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload', { method: 'POST', body: formData });
+      const result = await response.json();
+
+      if (response.ok && result.url) {
+        setInvoiceFilePath(result.url);
+      } else {
+        setSystemError(result.error || 'Failed to upload invoice.');
+      }
+    } catch (err) {
+      setSystemError('A network error interrupted the invoice upload.');
+    }
+  };
+
+  const handleHardwarePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImagePreviewUrl(URL.createObjectURL(file));
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
+      const response = await fetch('/api/upload', { method: 'POST', body: formData });
       const result = await response.json();
 
       if (response.ok && result.url) {
         setAsssetImageFilePath(result.url);
+        setCameraViewportMapped(true); // Auto-check the clearance box
       } else {
-        setSystemError(result.error || 'Failed to upload image payload to local server disk.');
+        setSystemError(result.error || 'Failed to upload hardware photo.');
       }
     } catch (err) {
-      console.error('File upload error:', err);
-      setSystemError('A network or server disconnect interrupted image storage.');
+      setSystemError('A network error interrupted the hardware photo upload.');
     }
   };
 
@@ -269,6 +286,21 @@ export default function ReceivingCustodianPage() {
       return;
     }
 
+    if (!invoiceFilePath) {
+      setSystemError('COMPLIANCE EXCEPTION: You must upload a scan or photo of the supplier invoice.');
+      return;
+    }
+
+    // Dynamic Remarks Verification
+    const finalRemarks = condition === 'Good' 
+      ? 'Asset received in good condition. Quantities match supplier manifest.' 
+      : remarks;
+
+    if (condition === 'Damaged' && finalRemarks.trim().length < 5) {
+      setSystemError('COMPLIANCE EXCEPTION: You must detail the damage in the inspection remarks (min 5 characters).');
+      return;
+    }
+
     startTransition(async () => {
       try {
         const response = await fetch('/api/receiving/create', {
@@ -279,7 +311,7 @@ export default function ReceivingCustodianPage() {
             condition,
             invoiceFilePath,
             asssetImageFilePath,
-            remarks,
+            remarks: finalRemarks,
           }),
         });
 
@@ -298,6 +330,7 @@ export default function ReceivingCustodianPage() {
         setPurchaseOrderId('');
         setCondition('');
         setInvoiceFilePath('');
+        setInvoiceFileName(null);
         setAsssetImageFilePath('');
         setImagePreviewUrl(null);
         setRemarks('');
@@ -397,83 +430,112 @@ export default function ReceivingCustodianPage() {
             )}
           </div>
 
-          <div>
-            <FieldLabel>Asset Physical Condition</FieldLabel>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setCondition('Good')}
-                className={`py-2.5 text-xs sm:text-sm font-semibold rounded-lg border transition min-h-[44px] cursor-pointer active:scale-95 ${
-                  condition === 'Good'
-                    ? 'bg-emerald-700 border-emerald-700 text-white shadow-xs font-bold'
-                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                ✓ Good Condition
-              </button>
-              <button
-                type="button"
-                onClick={() => setCondition('Damaged')}
-                className={`py-2.5 text-xs sm:text-sm font-semibold rounded-lg border transition min-h-[44px] cursor-pointer active:scale-95 ${
-                  condition === 'Damaged'
-                    ? 'bg-rose-600 border-rose-600 text-white shadow-xs font-bold'
-                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                ✕ Damaged Cargo
-              </button>
-            </div>
-            {fieldErrors?.condition?._errors && <FieldError>{fieldErrors.condition._errors[0]}</FieldError>}
-          </div>
-
-          <div>
-            <FieldLabel>Physical Hardware Photographic Evidence</FieldLabel>
-            <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center hover:border-emerald-600 transition bg-slate-50/50">
-              {imagePreviewUrl ? (
-                <div className="space-y-3">
-                  <img
-                    src={imagePreviewUrl}
-                    alt="Physical Hardware Intake"
-                    className="max-h-48 rounded-lg mx-auto border border-slate-300 shadow-sm object-cover"
-                  />
-                  <p className="text-[11px] font-mono text-slate-500 break-all">{asssetImageFilePath}</p>
-                </div>
-              ) : (
-                <div className="space-y-2 py-3">
-                  <svg className="w-8 h-8 text-slate-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <p className="text-xs font-semibold text-slate-700">Capture Hardware Photo or Upload File</p>
-                  <p className="text-[10px] text-slate-400">Photographic proof of physical equipment condition is mandatory</p>
-                </div>
+          {/* DUAL UPLOAD PANELS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            
+            {/* 1. INVOICE UPLOAD (CLEAN UX) */}
+            <div>
+              <FieldLabel>Supplier Invoice Attachment</FieldLabel>
+              <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 bg-slate-50 hover:border-emerald-600 transition h-[160px] flex flex-col justify-center">
+                {invoiceFileName || invoiceFilePath ? (
+                  <div className="flex flex-col h-full justify-between">
+                    <div className="flex items-center space-x-3 overflow-hidden bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                      <span className="text-xl shrink-0">🧾</span>
+                      <div className="truncate">
+                        <span className="block text-xs font-bold text-emerald-900 truncate">
+                          {invoiceFileName || 'Invoice Document Attached'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInvoiceFilePath('');
+                        setInvoiceFileName(null);
+                      }}
+                      className="text-xs font-bold text-rose-600 hover:text-rose-800 mt-2 px-2.5 py-1.5 rounded bg-white border border-rose-200 hover:bg-rose-50 transition shrink-0 cursor-pointer active:scale-95 text-center"
+                    >
+                      Remove Invoice
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center space-y-2">
+                    <input
+                      type="file"
+                      accept="application/pdf,image/*"
+                      onChange={handleInvoiceUpload}
+                      className="hidden"
+                      id="invoice-file-input"
+                    />
+                    <label
+                      htmlFor="invoice-file-input"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-2xs active:scale-95"
+                    >
+                      <span>📁</span>
+                      <span>Upload Invoice</span>
+                    </label>
+                    <p className="text-[10px] text-slate-400">
+                      Scan or photo of delivery receipt
+                    </p>
+                  </div>
+                )}
+              </div>
+              {fieldErrors?.invoiceFilePath?._errors && (
+                <FieldError>{fieldErrors.invoiceFilePath._errors[0]}</FieldError>
               )}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleImageFileSelect}
-                className="mt-2 text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
-              />
             </div>
-            {fieldErrors?.asssetImageFilePath?._errors && (
-              <FieldError>{fieldErrors.asssetImageFilePath._errors[0]}</FieldError>
-            )}
-          </div>
 
-          <div>
-            <FieldLabel>Supplier Invoice Storage Path (Link)</FieldLabel>
-            <input
-              type="text"
-              required
-              className={`${inputClass(!!fieldErrors?.invoiceFilePath)} font-mono`}
-              placeholder="/storage/invoices/INV-2026-XXXX.pdf"
-              value={invoiceFilePath}
-              onChange={(e) => setInvoiceFilePath(e.target.value)}
-            />
-            {fieldErrors?.invoiceFilePath?._errors && (
-              <FieldError>{fieldErrors.invoiceFilePath._errors[0]}</FieldError>
-            )}
+            {/* 2. HARDWARE PHOTO UPLOAD */}
+            <div>
+              <FieldLabel>Physical Hardware Photographic Proof</FieldLabel>
+              <div className="border-2 border-dashed border-slate-300 rounded-xl p-3 bg-slate-50 hover:border-emerald-600 transition h-[160px] flex flex-col justify-center">
+                {imagePreviewUrl ? (
+                  <div className="relative group h-full">
+                    <img
+                      src={imagePreviewUrl}
+                      alt="Physical Hardware Intake"
+                      className="w-full h-full object-cover rounded-lg border border-slate-300 shadow-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAsssetImageFilePath('');
+                        setImagePreviewUrl(null);
+                        setCameraViewportMapped(false);
+                      }}
+                      className="absolute inset-0 bg-slate-900/60 text-white text-xs font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                    >
+                      ✕ Remove Photo
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center space-y-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleHardwarePhotoSelect}
+                      className="hidden"
+                      id="hardware-photo-input"
+                    />
+                    <label
+                      htmlFor="hardware-photo-input"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-2xs active:scale-95"
+                    >
+                      <span>📷</span>
+                      <span>Capture Photo</span>
+                    </label>
+                    <p className="text-[10px] text-slate-400">
+                      Proof of physical equipment condition
+                    </p>
+                  </div>
+                )}
+              </div>
+              {fieldErrors?.asssetImageFilePath?._errors && (
+                <FieldError>{fieldErrors.asssetImageFilePath._errors[0]}</FieldError>
+              )}
+            </div>
+
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
@@ -497,15 +559,52 @@ export default function ReceivingCustodianPage() {
           </div>
 
           <div>
-            <FieldLabel>Inspection Remarks</FieldLabel>
-            <textarea
-              rows={2}
-              className={inputClass(false)}
-              placeholder="Optional notes regarding shipping condition or packaging details..."
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-            />
+            <FieldLabel>Asset Physical Condition</FieldLabel>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setCondition('Good');
+                  setRemarks('');
+                }}
+                className={`py-2.5 text-xs sm:text-sm font-semibold rounded-lg border transition min-h-[44px] cursor-pointer active:scale-95 ${
+                  condition === 'Good'
+                    ? 'bg-emerald-700 border-emerald-700 text-white shadow-xs font-bold'
+                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                ✓ Good Condition
+              </button>
+              <button
+                type="button"
+                onClick={() => setCondition('Damaged')}
+                className={`py-2.5 text-xs sm:text-sm font-semibold rounded-lg border transition min-h-[44px] cursor-pointer active:scale-95 ${
+                  condition === 'Damaged'
+                    ? 'bg-rose-600 border-rose-600 text-white shadow-xs font-bold'
+                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                ✕ Damaged Cargo
+              </button>
+            </div>
+            {fieldErrors?.condition?._errors && <FieldError>{fieldErrors.condition._errors[0]}</FieldError>}
           </div>
+
+          {/* DYNAMIC DAMAGE REMARKS (Hidden unless damaged is selected) */}
+          {condition === 'Damaged' && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+              <FieldLabel>Damage Inspection Remarks</FieldLabel>
+              <textarea
+                required
+                rows={3}
+                className={inputClass(!!fieldErrors?.remarks)}
+                placeholder="Detail the extent of the damage, missing components, or packaging compromises..."
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+              />
+              {fieldErrors?.remarks?._errors && <FieldError>{fieldErrors.remarks._errors[0]}</FieldError>}
+            </div>
+          )}
 
           <div className="border-t border-slate-100 pt-4 flex justify-end">
             <ActionButton type="submit" disabled={isPending}>

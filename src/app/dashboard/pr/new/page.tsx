@@ -19,7 +19,6 @@ import {
 interface PurchaseItem {
   itemName: string;
   quantity: number;
-  unitPrice: number;
 }
 
 interface ZodSubErrors {
@@ -28,6 +27,7 @@ interface ZodSubErrors {
 
 interface ZodFormErrors {
   justification?: ZodSubErrors;
+  adminProofFilePath?: ZodSubErrors;
   items?: Record<string, unknown>;
 }
 
@@ -40,8 +40,11 @@ export default function NewPurchaseRequestPage() {
 
   const [justification, setJustification] = useState<string>('');
   const [isDirectPoBypass, setIsDirectPoBypass] = useState<boolean>(false);
+  const [adminProofFilePath, setAdminProofFilePath] = useState<string>('');
+  const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
+
   const [items, setItems] = useState<PurchaseItem[]>([
-    { itemName: '', quantity: 1, unitPrice: 0.0 },
+    { itemName: '', quantity: 1 },
   ]);
 
   const [systemError, setSystemError] = useState<string | null>(null);
@@ -59,6 +62,29 @@ export default function NewPurchaseRequestPage() {
       .finally(() => setUserLoading(false));
   }, []);
 
+  const handleProofFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAttachedFileName(file.name);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok && data.url) {
+          setAdminProofFilePath(data.url);
+        }
+      } catch (err) {
+        console.error('Upload failed:', err);
+      }
+    }
+  };
+
   const handleItemChange = (index: number, field: keyof PurchaseItem, value: string | number) => {
     const updatedItems = [...items];
     if (field === 'itemName') {
@@ -69,13 +95,11 @@ export default function NewPurchaseRequestPage() {
     setItems(updatedItems);
   };
 
-  const addItemRow = () => setItems([...items, { itemName: '', quantity: 1, unitPrice: 0.0 }]);
+  const addItemRow = () => setItems([...items, { itemName: '', quantity: 1 }]);
 
   const removeItemRow = (index: number) => {
     if (items.length > 1) setItems(items.filter((_, i) => i !== index));
   };
-
-  const grandTotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,10 +113,17 @@ export default function NewPurchaseRequestPage() {
 
     startTransition(async () => {
       try {
+        const payload = {
+          justification,
+          isDirectPoBypass,
+          ...(isDirectPoBypass && { adminProofFilePath }),
+          items,
+        };
+
         const response = await fetch('/api/pr/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ justification, isDirectPoBypass, items }),
+          body: JSON.stringify(payload),
         });
 
         const result = await response.json();
@@ -106,7 +137,7 @@ export default function NewPurchaseRequestPage() {
         }
 
         router.refresh();
-        router.push('/dashboard/audit');
+        router.push('/dashboard/pr/track');
       } catch (err: unknown) {
         setSystemError(err instanceof Error ? err.message : 'An unclassified system exception occurred.');
       }
@@ -177,23 +208,75 @@ export default function NewPurchaseRequestPage() {
           )}
         </Card>
 
-        {/* DIRECT PO BYPASS OPTION */}
-        <Card className="bg-emerald-50/40 border-emerald-200/80 flex items-start gap-3.5 p-4">
-          <input
-            id="bypass-toggle"
-            type="checkbox"
-            className="h-4 w-4 mt-0.5 accent-emerald-700 rounded cursor-pointer shrink-0"
-            checked={isDirectPoBypass}
-            onChange={(e) => setIsDirectPoBypass(e.target.checked)}
-          />
-          <div className="text-xs">
-            <label htmlFor="bypass-toggle" className="font-bold text-emerald-950 cursor-pointer block">
-              Executive Pre-Approved Letter Bypass (Proceed Directly to PO Generation)
-            </label>
-            <p className="text-slate-600 mt-1 leading-relaxed text-[11px]">
-              Enable this bypass strictly if an officially signed executive approval letter is already on file. This requisition will skip standard Business and Admin Office reviews and route directly to the Purchasing Office for PO generation.
-            </p>
+        {/* DIRECT PO BYPASS OPTION WITH MANDATORY PROOF ATTACHMENT */}
+        <Card className="bg-emerald-50/40 border-emerald-200/80 p-4 space-y-3">
+          <div className="flex items-start gap-3.5">
+            <input
+              id="bypass-toggle"
+              type="checkbox"
+              className="h-4 w-4 mt-0.5 accent-emerald-700 rounded cursor-pointer shrink-0"
+              checked={isDirectPoBypass}
+              onChange={(e) => {
+                setIsDirectPoBypass(e.target.checked);
+                if (!e.target.checked) {
+                  setAdminProofFilePath('');
+                  setAttachedFileName(null);
+                }
+              }}
+            />
+            <div className="text-xs">
+              <label htmlFor="bypass-toggle" className="font-bold text-emerald-950 cursor-pointer block">
+                Executive Pre-Approved Letter Bypass (Proceed Directly to PO Generation)
+              </label>
+              <p className="text-slate-600 mt-1 leading-relaxed text-[11px]">
+                Enable this bypass strictly if an officially signed executive approval letter is already on file. Uploading the physical signed letter is mandatory to validate skipping standard Business and Admin Office reviews.
+              </p>
+            </div>
           </div>
+
+          {isDirectPoBypass && (
+            <div className="pt-3 border-t border-emerald-200/80 space-y-3">
+              <FieldLabel>Attach Officially Signed Executive Approval Letter (PDF / Image / Link)</FieldLabel>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                <div className="border-2 border-dashed border-emerald-300 rounded-xl p-3 bg-white text-center hover:border-emerald-600 transition">
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    onChange={handleProofFileUpload}
+                    className="hidden"
+                    id="bypass-proof-input"
+                  />
+                  <label htmlFor="bypass-proof-input" className="cursor-pointer block space-y-1">
+                    <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 inline-block">
+                      📁 {attachedFileName ? 'Change Attached Approval Letter' : 'Upload Signed Letter (PDF / Image)'}
+                    </span>
+                    <p className="text-[10px] text-slate-400">
+                      {attachedFileName || 'Select scanned PDF or photo of signed letter'}
+                    </p>
+                  </label>
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    required={isDirectPoBypass}
+                    className={`${inputClass(!!fieldErrors?.adminProofFilePath)} font-mono text-xs`}
+                    placeholder="/uploads/1785080140890-signed_executive_letter.pdf"
+                    value={adminProofFilePath}
+                    onChange={(e) => setAdminProofFilePath(e.target.value)}
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Auto-populated upon file upload or enter storage path URL directly.
+                  </p>
+                </div>
+              </div>
+
+              {fieldErrors?.adminProofFilePath?._errors && (
+                <FieldError>{fieldErrors.adminProofFilePath._errors[0]}</FieldError>
+              )}
+            </div>
+          )}
         </Card>
 
         {/* ITEMS REQUESTED SECTION */}
@@ -202,7 +285,7 @@ export default function NewPurchaseRequestPage() {
             <div>
               <h3 className="text-sm font-bold text-slate-900">Requested Items Schedule</h3>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Itemize specific equipment, specs, quantities, and estimated unit prices.
+                Itemize specific equipment, technical specifications, and required quantities.
               </p>
             </div>
             <span className="text-xs font-bold text-emerald-800 bg-emerald-100/70 px-3 py-1 rounded-full border border-emerald-200">
@@ -212,10 +295,9 @@ export default function NewPurchaseRequestPage() {
 
           {/* Desktop/Tablet Column Header Legend */}
           <div className="hidden sm:grid grid-cols-12 gap-3 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
-            <div className="col-span-5">Item Description &amp; Technical Specifications</div>
-            <div className="col-span-2">Quantity</div>
-            <div className="col-span-3">Unit Price (₱)</div>
-            <div className="col-span-2 text-right">Subtotal</div>
+            <div className="col-span-8">Item Description &amp; Technical Specifications</div>
+            <div className="col-span-3">Quantity</div>
+            <div className="col-span-1 text-right">Action</div>
           </div>
 
           <div className="space-y-3">
@@ -225,7 +307,7 @@ export default function NewPurchaseRequestPage() {
                 className="grid grid-cols-12 gap-3 items-center bg-slate-50/80 p-3 rounded-xl border border-slate-200/90 hover:border-slate-300 transition"
               >
                 {/* Item Name / Specifications */}
-                <div className="col-span-12 sm:col-span-5">
+                <div className="col-span-12 sm:col-span-8">
                   <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
                     Item Description &amp; Specs
                   </label>
@@ -240,7 +322,7 @@ export default function NewPurchaseRequestPage() {
                 </div>
 
                 {/* Quantity */}
-                <div className="col-span-5 sm:col-span-2">
+                <div className="col-span-10 sm:col-span-3">
                   <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
                     Quantity
                   </label>
@@ -255,31 +337,8 @@ export default function NewPurchaseRequestPage() {
                   />
                 </div>
 
-                {/* Unit Price */}
-                <div className="col-span-5 sm:col-span-3">
-                  <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Unit Price (₱)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-xs font-mono">₱</span>
-                    <input
-                      type="number"
-                      required
-                      min={0.01}
-                      step="0.01"
-                      placeholder="0.00"
-                      className="w-full pl-7 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 outline-none transition font-mono"
-                      value={item.unitPrice || ''}
-                      onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Actions & Subtotal */}
-                <div className="col-span-2 sm:col-span-2 flex items-center justify-end gap-2">
-                  <span className="hidden lg:inline text-xs font-mono text-slate-700 font-bold">
-                    ₱{(item.quantity * item.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
+                {/* Actions */}
+                <div className="col-span-2 sm:col-span-1 flex items-center justify-end">
                   <button
                     type="button"
                     onClick={() => removeItemRow(index)}
@@ -299,14 +358,14 @@ export default function NewPurchaseRequestPage() {
           </ActionButton>
         </Card>
 
-        {/* GRAND TOTAL & SUBMISSION */}
+        {/* SUBMISSION ACTION CARD */}
         <Card className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900 text-white">
           <div>
             <span className="text-[10px] text-slate-400 uppercase tracking-widest block font-mono">
-              Estimated Total Requisition Amount
+              Requisition Dispatch Payload
             </span>
-            <div className="text-2xl font-black text-emerald-400 mt-0.5 font-mono">
-              ₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div className="text-sm font-bold text-emerald-400 mt-0.5">
+              {items.length} {items.length === 1 ? 'Item Specification Line' : 'Item Specification Lines'} Configured
             </div>
           </div>
 
