@@ -359,7 +359,13 @@ export default function BusinessOfficeEvaluationPage() {
 
           <div>
             <FieldLabel>Evaluation Decision</FieldLabel>
-            <DecisionButtonGroup value={evaluationAction} onChange={setEvaluationAction} />
+            <DecisionButtonGroup
+              value={evaluationAction}
+              onChange={setEvaluationAction}
+              approveLabel="✓ Approve"
+              returnLabel="↶ Return for Correction"
+              declineLabel="✕ Decline"
+            />
             {fieldErrors?.action?._errors && <FieldError>{fieldErrors.action._errors[0]}</FieldError>}
           </div>
 
@@ -367,7 +373,7 @@ export default function BusinessOfficeEvaluationPage() {
           {(evaluationAction === 'RETURN_FOR_CORRECTION' || evaluationAction === 'DECLINE') && (
             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
               <FieldLabel>
-                {evaluationAction === 'RETURN_FOR_CORRECTION' ? 'Reason for Recalibration' : 'Reason for Rejection'}
+                {evaluationAction === 'RETURN_FOR_CORRECTION' ? 'Reason for Return for Correction' : 'Reason for Rejection'}
               </FieldLabel>
               <textarea
                 required
