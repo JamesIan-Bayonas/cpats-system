@@ -1,3 +1,4 @@
+// src/app/api/pr/create/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { PRStatus, Role } from '@prisma/client';
 import { prisma } from '@/shared/prisma';
@@ -22,7 +23,9 @@ export async function POST(request: NextRequest) {
 
     const { justification, isDirectPoBypass, adminProofFilePath, items } = validation.data;
 
-    const initialStatus = isDirectPoBypass ? PRStatus.Approved_Awaiting_PO : PRStatus.Pending_Business_Approval;
+    // Fast-Track Business Office & Admin Recording Workflow:
+    // Requisitions with Pre-Approved Letters enter Pending_Business_Approval to guarantee an auditable digital trail
+    const initialStatus = PRStatus.Pending_Business_Approval;
 
     const executionResult = await prisma.$transaction(async (tx) => {
       const newPR = await tx.purchaseRequest.create({
@@ -44,7 +47,7 @@ export async function POST(request: NextRequest) {
           previousState: null,
           newState: initialStatus,
           remarks: isDirectPoBypass
-            ? `Requisition initialized via Executive Pre-Approved Letter Bypass. Proof document bound: [${adminProofFilePath}]. Standard Business and Admin Office reviews bypassed.`
+            ? `Requisition initialized with Executive Pre-Approved Letter attached [${adminProofFilePath}]. Dispatched to Business Office for fast-track fiscal recording and audit logging.`
             : "Purchase request created and submitted to Business Office for evaluation.",
         },
       });
