@@ -1,3 +1,4 @@
+// src/app/dashboard/pr/approve-admin/page.tsx
 'use client';
 
 import React, { useState, useEffect, useTransition } from 'react';
@@ -41,6 +42,7 @@ interface PendingAdminPRNode {
   justification: string;
   status: PRStatus;
   isDirectPoBypass?: boolean;
+  adminProofFilePath?: string | null;
   createdAt: string;
   department: {
     code: string;
@@ -63,6 +65,11 @@ function deriveItemSummaryTitle(itemsPayload: unknown): string {
   return `${firstItemName} (x${firstItemQty}) +${items.length - 1} more item${items.length - 1 > 1 ? 's' : ''}`;
 }
 
+const isImageFile = (path?: string | null) => {
+  if (!path) return false;
+  return /\.(jpg|jpeg|png|webp|svg)$/i.test(path);
+};
+
 export default function AdminOfficeApprovalPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -75,9 +82,9 @@ export default function AdminOfficeApprovalPage() {
   const [action, setAction] = useState<'APPROVE' | 'DECLINE' | 'RETURN_FOR_CORRECTION' | ''>('');
   const [remarks, setRemarks] = useState<string>('');
   
-  // Signatory Presence Mode Selector (Option 1 vs On-Site)
-  const [signatoryMode, setSignatoryMode] = useState<'ON_SITE' | 'REMOTE_OPTION_1'>('ON_SITE');
-  const [adminProofFilePath, setAdminProofFilePath] = useState<string>('');
+  // Option 1 Off-Campus Toggle & Proof State
+  const [isOption1Enabled, setIsOption1Enabled] = useState<boolean>(false);
+  const [option1ProofFilePath, setOption1ProofFilePath] = useState<string>('');
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
   // Mandatory Signatory Verification Checkboxes
@@ -85,7 +92,7 @@ export default function AdminOfficeApprovalPage() {
   const [checkedPOAuth, setCheckedPOAuth] = useState<boolean>(false);
   const [checkedPurchaseAuth, setCheckedPurchaseAuth] = useState<boolean>(false);
 
-  // Queue Storage Pools
+  // Queue Storage
   const [adminQueue, setAdminQueue] = useState<PendingAdminPRNode[]>([]);
   const [queueLoading, setQueueLoading] = useState<boolean>(true);
 
@@ -153,7 +160,7 @@ export default function AdminOfficeApprovalPage() {
         });
         const data = await res.json();
         if (res.ok && data.url) {
-          setAdminProofFilePath(data.url);
+          setOption1ProofFilePath(data.url);
         }
       } catch (err) {
         console.error('Upload failed:', err);
@@ -177,27 +184,28 @@ export default function AdminOfficeApprovalPage() {
       return;
     }
 
-    // Strict Enforcement of Signatory Safeguards on Approval Events
     if (action === 'APPROVE') {
       if (!checkedPR || !checkedPOAuth || !checkedPurchaseAuth) {
         setSystemError('COMPLIANCE EXCEPTION: All three regulatory authorization check-boxes must be actively validated.');
         return;
       }
-      if (signatoryMode === 'REMOTE_OPTION_1' && (!adminProofFilePath || adminProofFilePath.trim().length === 0)) {
-        setSystemError('AUDIT TRAIL FAILURE: Remote Channel Verification (Option 1) strictly requires an attached proof file or screenshot.');
+      if (isOption1Enabled && (!option1ProofFilePath || option1ProofFilePath.trim().length === 0)) {
+        setSystemError('AUDIT TRAIL FAILURE: Option 1 Remote Sign-Off is enabled, but no proof file has been attached.');
         return;
       }
     }
 
-    // Auto-generate remarks for approval if left empty by user
+    const selectedPR = adminQueue.find((req) => req.id === prId);
     const finalRemarks = action === 'APPROVE'
       ? (remarks.trim().length >= 5 
           ? remarks 
-          : `Executive sign-off granted via ${signatoryMode === 'ON_SITE' ? 'On-Site Direct Approval (Head of Office Present)' : 'Remote Channel Verification (Option 1 Protocol)'}.`)
+          : (selectedPR?.isDirectPoBypass 
+              ? 'Fast-Track Executive Logged: Verified with attached Executive Pre-Approved Letter. Authorized for Purchase Order generation.' 
+              : `Executive approval granted by Admin Office.`))
       : remarks;
 
     if (action !== 'APPROVE' && finalRemarks.trim().length < 5) {
-      setSystemError('COMPLIANCE EXCEPTION: Audit evaluation remarks are mandatory for recalibrating or declining requests (min. 5 characters).');
+      setSystemError('COMPLIANCE EXCEPTION: Audit evaluation remarks are mandatory for returning or declining requests (min. 5 characters).');
       return;
     }
 
@@ -207,7 +215,7 @@ export default function AdminOfficeApprovalPage() {
           prId,
           action,
           remarks: finalRemarks,
-          ...(action === 'APPROVE' && adminProofFilePath ? { adminProofFilePath } : {}),
+          ...(action === 'APPROVE' && isOption1Enabled && option1ProofFilePath ? { adminProofFilePath: option1ProofFilePath } : {}),
         };
 
         const response = await fetch('/api/pr/review', {
@@ -231,8 +239,8 @@ export default function AdminOfficeApprovalPage() {
         setPrId('');
         setAction('');
         setRemarks('');
-        setSignatoryMode('ON_SITE');
-        setAdminProofFilePath('');
+        setIsOption1Enabled(false);
+        setOption1ProofFilePath('');
         setAttachedFileName(null);
         setCheckedPR(false);
         setCheckedPOAuth(false);
@@ -268,7 +276,7 @@ export default function AdminOfficeApprovalPage() {
   const queueTasks: QueueTask[] = adminQueue.map((task) => ({
     id: task.id,
     title: deriveItemSummaryTitle(task.itemsPayload),
-    subtitle: task.department?.code || 'OVPA',
+    subtitle: task.isDirectPoBypass ? `${task.department?.code || 'OVPA'} • PRE-APPROVED` : (task.department?.code || 'OVPA'),
     dateLabel: new Date(task.createdAt).toLocaleDateString(),
     justificationPreview: task.justification,
   }));
@@ -302,11 +310,23 @@ export default function AdminOfficeApprovalPage() {
         loading={queueLoading}
         emptyMessage="Backlog Clear: No documents require structural executive evaluation."
         selectedId={prId}
-        onSelect={setPrId}
+        onSelect={(id) => {
+          setPrId(id);
+          const pr = adminQueue.find((item) => item.id === id);
+          if (pr) {
+            setAction('APPROVE');
+            setCheckedPR(true);
+            setCheckedPOAuth(true);
+            setCheckedPurchaseAuth(true);
+          }
+          setIsOption1Enabled(false);
+          setOption1ProofFilePath('');
+          setAttachedFileName(null);
+        }}
       >
         <form onSubmit={handleAdminApproval} className="space-y-6">
           <div>
-            <FieldLabel>Target Requisition Transaction String (UUIDv4)</FieldLabel>
+            <FieldLabel>Target Requisition (Requisition Ref Code)</FieldLabel>
             <input
               type="text"
               required
@@ -318,7 +338,7 @@ export default function AdminOfficeApprovalPage() {
             {fieldErrors?.prId?._errors && <FieldError>{fieldErrors.prId._errors[0]}</FieldError>}
           </div>
 
-          {/* REQUISITION INSPECTION PANEL */}
+          {/* REQUISITION INSPECTION PANEL WITH DOCUMENT VIEWER */}
           {selectedPR ? (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
               <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
@@ -331,13 +351,52 @@ export default function AdminOfficeApprovalPage() {
                   </span>
                 </div>
                 {selectedPR.isDirectPoBypass && (
-                  <span className="px-2 py-0.5 text-[9px] font-bold font-mono uppercase bg-emerald-100 text-emerald-800 rounded border border-emerald-300">
-                    Bypass Active
+                  <span className="px-2.5 py-1 text-[9px] font-bold font-mono uppercase bg-emerald-100 text-emerald-800 rounded border border-emerald-300">
+                    Pre-Approved Letter Attached
                   </span>
                 )}
               </div>
 
-              {/* OPERATIONAL JUSTIFICATION */}
+              {/* REQUESTER'S ATTACHED PRE-APPROVED LETTER DOCUMENT VIEWER */}
+              {selectedPR.adminProofFilePath && (
+                <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-900 uppercase font-mono tracking-wider flex items-center gap-1.5">
+                      <span>📜</span> Requesting Office Attached Approval Letter
+                    </span>
+                    <a
+                      href={selectedPR.adminProofFilePath}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] font-bold font-mono text-emerald-800 hover:text-emerald-950 underline bg-white px-2 py-0.5 rounded border border-emerald-300"
+                    >
+                      🔗 Open Document in New Tab
+                    </a>
+                  </div>
+
+                  {isImageFile(selectedPR.adminProofFilePath) ? (
+                    <div className="mt-2 bg-white p-2 rounded-lg border border-emerald-200 text-center">
+                      <img
+                        src={selectedPR.adminProofFilePath}
+                        alt="Pre-Approved Executive Letter"
+                        className="max-h-64 mx-auto rounded border border-slate-200 object-contain shadow-xs"
+                      />
+                      <span className="block text-[10px] font-mono text-slate-400 mt-1 truncate">
+                        Path: {selectedPR.adminProofFilePath}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="bg-white p-3 rounded-lg border border-emerald-200 flex items-center justify-between text-xs text-slate-700">
+                      <div className="flex items-center gap-2 font-mono">
+                        <span>📄</span>
+                        <span className="font-bold text-slate-800 truncate max-w-xs">{selectedPR.adminProofFilePath}</span>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">PDF Document</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 font-mono">
                   Operational Justification & Purpose
@@ -347,7 +406,6 @@ export default function AdminOfficeApprovalPage() {
                 </div>
               </div>
 
-              {/* ITEMIZED REQUISITION SCHEDULE */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
@@ -384,7 +442,7 @@ export default function AdminOfficeApprovalPage() {
                               </td>
                             )}
                             {hasPrices && (
-                              <td className="p-2.5 text-right font-mono font-bold text-slate-800">
+                              <td className="p-2.5 text-right font-mono text-slate-800">
                                 {subtotal > 0 ? `₱${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
                               </td>
                             )}
@@ -402,7 +460,7 @@ export default function AdminOfficeApprovalPage() {
             </div>
           )}
 
-         <div>
+          <div>
             <FieldLabel>Authoritative Executive Action Selection</FieldLabel>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
@@ -447,52 +505,6 @@ export default function AdminOfficeApprovalPage() {
           {action === 'APPROVE' && (
             <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
               
-              {/* SIGNATORY PRESENCE SELECTOR */}
-              <div className="border-b border-slate-200 pb-3.5 space-y-2">
-                <FieldLabel>Executive Signatory Location & Method</FieldLabel>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSignatoryMode('ON_SITE');
-                      setAdminProofFilePath('');
-                      setAttachedFileName(null);
-                    }}
-                    className={`p-3 text-left rounded-xl border transition-all cursor-pointer ${
-                      signatoryMode === 'ON_SITE'
-                        ? 'border-emerald-700 bg-emerald-50/80 ring-2 ring-emerald-700/20'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900">🏢 On-Site Direct Sign-off</span>
-                      {signatoryMode === 'ON_SITE' && <span className="text-emerald-700 text-xs font-bold">✓ Active</span>}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                      VP / Head of Office is physically present in the campus office. Proof upload is optional.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSignatoryMode('REMOTE_OPTION_1')}
-                    className={`p-3 text-left rounded-xl border transition-all cursor-pointer ${
-                      signatoryMode === 'REMOTE_OPTION_1'
-                        ? 'border-indigo-600 bg-indigo-50/80 ring-2 ring-indigo-600/20'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900">📱 Remote Verification (Option 1)</span>
-                      {signatoryMode === 'REMOTE_OPTION_1' && <span className="text-indigo-700 text-xs font-bold">✓ Active</span>}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                      Head of Office is off-campus on an errand. Attaching Viber/messaging proof screenshot is mandatory.
-                    </p>
-                  </button>
-                </div>
-              </div>
-
               <div>
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-3 font-mono">
                   Mandatory Regulatory Authorization Clearances
@@ -522,81 +534,87 @@ export default function AdminOfficeApprovalPage() {
                 </div>
               </div>
 
-              {/* REFACTORED CLEAN PROOF ATTACHMENT WIDGET (NO RAW TEXT INPUT) */}
-              <div className="border-t border-slate-200 pt-3.5 space-y-2">
-                <div className="flex justify-between items-center">
-                  <FieldLabel>Executive Approval Proof Attachment</FieldLabel>
-                  <span className={`text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded border ${
-                    signatoryMode === 'REMOTE_OPTION_1'
-                      ? 'bg-rose-50 text-rose-700 border-rose-200'
-                      : 'bg-slate-100 text-slate-500 border-slate-200'
-                  }`}>
-                    {signatoryMode === 'REMOTE_OPTION_1' ? 'Mandatory for Option 1' : 'Optional for On-Site'}
-                  </span>
-                </div>
-                
-                <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 bg-white hover:border-emerald-600 transition">
-                  {attachedFileName || adminProofFilePath ? (
-                    <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                      <div className="flex items-center space-x-3 overflow-hidden">
-                        <span className="text-xl shrink-0">📄</span>
-                        <div className="truncate">
-                          <span className="block text-xs font-bold text-emerald-900 truncate">
-                            {attachedFileName || 'Proof Document Attached'}
-                          </span>
-                          <span className="block text-[10px] font-mono text-emerald-700 truncate">
-                            {adminProofFilePath}
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAdminProofFilePath('');
-                          setAttachedFileName(null);
-                        }}
-                        className="text-xs font-bold text-rose-600 hover:text-rose-800 px-2.5 py-1 rounded bg-white border border-rose-200 hover:bg-rose-50 transition shrink-0 cursor-pointer active:scale-95"
-                      >
-                        Remove File
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-center space-y-2">
-                      <input
-                        type="file"
-                        accept="application/pdf,image/*"
-                        onChange={handleProofFileUpload}
-                        className="hidden"
-                        id="proof-file-input"
-                      />
-                      <label
-                        htmlFor="proof-file-input"
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-2xs active:scale-95"
-                      >
-                        <span>📁</span>
-                        <span>Upload Proof File (PDF / Viber Screenshot)</span>
-                      </label>
-                      <p className="text-[10px] text-slate-400">
-                        {signatoryMode === 'REMOTE_OPTION_1'
-                          ? 'Upload official messaging screenshot or endorsement slip from Head of Office'
-                          : 'Optional: Attach physical document scan if available'}
-                      </p>
-                    </div>
-                  )}
-                </div>
+              {/* CLEAN OPTION 1 TOGGLE & SIMPLIFIED ATTACH PROOF WIDGET */}
+              <div className="border-t border-slate-200 pt-3.5 space-y-3">
+                <CheckItem
+                  id="chk-option1-toggle"
+                  checked={isOption1Enabled}
+                  onChange={(checked) => {
+                    setIsOption1Enabled(checked);
+                    if (!checked) {
+                      setOption1ProofFilePath('');
+                      setAttachedFileName(null);
+                    }
+                  }}
+                  label="Enable Option 1: Off-Campus Remote Sign-Off"
+                  description="Check this strictly if the Head of Office is off-campus and granted remote approval via messaging."
+                />
 
-                {fieldErrors?.adminProofFilePath?._errors && (
-                  <FieldError>{fieldErrors.adminProofFilePath._errors[0]}</FieldError>
+                {isOption1Enabled && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <FieldLabel>Attach Proof File</FieldLabel>
+                    
+                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 bg-slate-50 hover:border-emerald-600 transition">
+                      {attachedFileName || option1ProofFilePath ? (
+                        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                          <div className="flex items-center space-x-3 overflow-hidden">
+                            <span className="text-xl shrink-0">📎</span>
+                            <div className="truncate">
+                              <span className="block text-xs font-bold text-emerald-900 truncate">
+                                {attachedFileName || 'Proof Document Attached'}
+                              </span>
+                              <span className="block text-[10px] font-mono text-emerald-700 truncate">
+                                {option1ProofFilePath}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOption1ProofFilePath('');
+                              setAttachedFileName(null);
+                            }}
+                            className="text-xs font-bold text-rose-600 hover:text-rose-800 px-2.5 py-1 rounded bg-white border border-rose-200 hover:bg-rose-50 transition shrink-0 cursor-pointer active:scale-95"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-center space-y-2">
+                          <input
+                            type="file"
+                            accept="application/pdf,image/*"
+                            onChange={handleProofFileUpload}
+                            className="hidden"
+                            id="proof-file-input"
+                          />
+                          <label
+                            htmlFor="proof-file-input"
+                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-2xs active:scale-95"
+                          >
+                            <span>📎</span>
+                            <span>Attach Proof</span>
+                          </label>
+                          <p className="text-[10px] text-slate-400">
+                            Upload messaging screenshot or remote sign-off document (PDF / Image)
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {fieldErrors?.adminProofFilePath?._errors && (
+                      <FieldError>{fieldErrors.adminProofFilePath._errors[0]}</FieldError>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* DYNAMIC AUDIT EVALUATION REMARKS */}
           {(action === 'RETURN_FOR_CORRECTION' || action === 'DECLINE') && (
             <div className="animate-in fade-in slide-in-from-top-2 duration-200">
               <FieldLabel>
-                {action === 'RETURN_FOR_CORRECTION' ? 'Reason for Recalibration' : 'Reason for Rejection'}
+                {action === 'RETURN_FOR_CORRECTION' ? 'Reason for Return for Correction' : 'Reason for Rejection'}
               </FieldLabel>
               <textarea
                 required

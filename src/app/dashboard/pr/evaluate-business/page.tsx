@@ -1,3 +1,4 @@
+// src/app/dashboard/pr/evaluate-business/page.tsx
 'use client';
 
 import React, { useState, useEffect, useTransition } from 'react';
@@ -137,9 +138,11 @@ export default function BusinessOfficeEvaluationPage() {
       return;
     }
     
-    // Inject a default audit compliance string if Approved. Ensure negative actions have user remarks.
+    const selectedPR = activeQueue.find((req) => req.id === targetPrId);
     const finalRemarks = evaluationAction === 'APPROVE' 
-      ? 'Approved by Business Office. Necessity and budget allocation verified.' 
+      ? (selectedPR?.isDirectPoBypass 
+          ? 'Fast-Track Logged: Verified with attached Executive Pre-Approved Letter. Budget allocation recorded.' 
+          : 'Approved by Business Office. Necessity and budget allocation verified.')
       : remarks;
 
     if (evaluationAction !== 'APPROVE' && finalRemarks.trim().length < 5) {
@@ -203,7 +206,7 @@ export default function BusinessOfficeEvaluationPage() {
   const queueTasks: QueueTask[] = activeQueue.map((task) => ({
     id: task.id,
     title: deriveItemSummaryTitle(task.itemsPayload),
-    subtitle: task.department.code,
+    subtitle: task.isDirectPoBypass ? `${task.department.code} • FAST-TRACK` : task.department.code,
     dateLabel: new Date(task.createdAt).toLocaleDateString(),
     justificationPreview: task.justification,
   }));
@@ -237,11 +240,19 @@ export default function BusinessOfficeEvaluationPage() {
         loading={queueLoading}
         emptyMessage="No purchase requests are currently waiting for evaluation."
         selectedId={targetPrId}
-        onSelect={setTargetPrId}
+        onSelect={(id) => {
+          setTargetPrId(id);
+          const pr = activeQueue.find((item) => item.id === id);
+          if (pr?.isDirectPoBypass) {
+            setEvaluationAction('APPROVE');
+            setNecessityVerified(true);
+            setBudgetAvailable(true);
+          }
+        }}
       >
         <form onSubmit={handleEvaluationSubmit} className="space-y-6">
           <div>
-            <FieldLabel>Target Purchase Request (UUID)</FieldLabel>
+            <FieldLabel>Target Purchase Request (Requisition Ref Code)</FieldLabel>
             <input
               type="text"
               required
@@ -252,6 +263,35 @@ export default function BusinessOfficeEvaluationPage() {
             />
             {fieldErrors?.prId?._errors && <FieldError>{fieldErrors.prId._errors[0]}</FieldError>}
           </div>
+
+          {/* PRE-APPROVED LETTER HIGHLIGHT BANNER */}
+          {selectedPR?.isDirectPoBypass && (
+            <div className="bg-emerald-50 border-l-4 border-emerald-600 rounded-r-xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-900 uppercase font-mono tracking-wider">
+                  ⚡ Executive Pre-Approved Letter Attached
+                </span>
+                <span className="text-[10px] font-mono font-bold bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded uppercase">
+                  Fast-Track Record Mode
+                </span>
+              </div>
+              <p className="text-xs text-emerald-800 leading-relaxed">
+                This requisition contains an attached executive pre-approval letter. Verify budget ledger allocation code and confirm fast-track dispatch to Admin Office.
+              </p>
+              {selectedPR.adminProofFilePath && (
+                <div className="pt-1">
+                  <a
+                    href={selectedPR.adminProofFilePath}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 underline hover:text-emerald-950 font-mono"
+                  >
+                    <span>📄 View Attached Executive Letter Document</span>
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* INSPECTION PANEL: OPERATIONAL JUSTIFICATION & ITEMIZED SCHEDULE */}
           {selectedPR ? (
@@ -267,12 +307,11 @@ export default function BusinessOfficeEvaluationPage() {
                 </div>
                 {selectedPR.isDirectPoBypass && (
                   <span className="px-2 py-0.5 text-[9px] font-bold font-mono uppercase bg-emerald-100 text-emerald-800 rounded border border-emerald-300">
-                    Bypass Active
+                    Pre-Approved Letter Attached
                   </span>
                 )}
               </div>
 
-              {/* OPERATIONAL JUSTIFICATION / PURPOSE */}
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 font-mono">
                   Operational Justification & Purpose
@@ -282,7 +321,6 @@ export default function BusinessOfficeEvaluationPage() {
                 </div>
               </div>
 
-              {/* ITEMIZED REQUISITION SCHEDULE */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
@@ -319,7 +357,7 @@ export default function BusinessOfficeEvaluationPage() {
                               </td>
                             )}
                             {hasPrices && (
-                              <td className="p-2.5 text-right font-mono font-bold text-slate-800">
+                              <td className="p-2.5 text-right font-mono text-slate-800">
                                 {subtotal > 0 ? `₱${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
                               </td>
                             )}
@@ -333,7 +371,7 @@ export default function BusinessOfficeEvaluationPage() {
             </div>
           ) : (
             <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs">
-              Select a requisition from the queue list on the left to inspect its operational justification and itemized schedule.
+              Select a requisition from the queue list on the left to inspect its details.
             </div>
           )}
 
@@ -369,7 +407,6 @@ export default function BusinessOfficeEvaluationPage() {
             {fieldErrors?.action?._errors && <FieldError>{fieldErrors.action._errors[0]}</FieldError>}
           </div>
 
-          {/* DYNAMIC AUDIT EVALUATION REMARKS */}
           {(evaluationAction === 'RETURN_FOR_CORRECTION' || evaluationAction === 'DECLINE') && (
             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
               <FieldLabel>
@@ -389,7 +426,7 @@ export default function BusinessOfficeEvaluationPage() {
               />
               {fieldErrors?.remarks?._errors && <FieldError>{fieldErrors.remarks._errors[0]}</FieldError>}
             </div>
-          )}<FieldLabel>Evaluation Decision</FieldLabel>
+          )}
 
           <div className="border-t border-slate-100 pt-4 flex justify-end">
             <ActionButton type="submit" disabled={isPending}>

@@ -1,4 +1,4 @@
-// File: src/app/dashboard/pr/new/page.tsx
+// src/app/dashboard/pr/new/page.tsx
 'use client';
 
 import React, { useState, useEffect, useTransition } from 'react';
@@ -208,7 +208,7 @@ export default function NewPurchaseRequestPage() {
           )}
         </Card>
 
-        {/* DIRECT PO BYPASS OPTION WITH MANDATORY PROOF ATTACHMENT */}
+        {/* DIRECT PO BYPASS OPTION WITH FAST-TRACK AUDIT TRAIL EXPLANATION */}
         <Card className="bg-emerald-50/40 border-emerald-200/80 p-4 space-y-3">
           <div className="flex items-start gap-3.5">
             <input
@@ -226,20 +226,20 @@ export default function NewPurchaseRequestPage() {
             />
             <div className="text-xs">
               <label htmlFor="bypass-toggle" className="font-bold text-emerald-950 cursor-pointer block">
-                Executive Pre-Approved Letter Bypass (Proceed Directly to PO Generation)
+                Executive Pre-Approved Letter Fast-Track (Dispatches with Attached Approval Letter)
               </label>
               <p className="text-slate-600 mt-1 leading-relaxed text-[11px]">
-                Enable this bypass strictly if an officially signed executive approval letter is already on file. Uploading the physical signed letter is mandatory to validate skipping standard Business and Admin Office reviews.
+                Enable this option if an officially signed executive approval letter is already on file. Attaching the physical signed letter allows the Business Office and Admin Office to fast-track digital recording while preserving a 100% auditable system trail.
               </p>
             </div>
           </div>
 
           {isDirectPoBypass && (
             <div className="pt-3 border-t border-emerald-200/80 space-y-3">
-              <FieldLabel>Attach Officially Signed Executive Approval Letter (PDF / Image / Link)</FieldLabel>
+              <FieldLabel>Attach Officially Signed Executive Approval Letter (PDF / Image)</FieldLabel>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-                <div className="border-2 border-dashed border-emerald-300 rounded-xl p-3 bg-white text-center hover:border-emerald-600 transition">
+              <div className="grid grid-cols-1 gap-3 items-center">
+                <div className="border-2 border-dashed border-emerald-300 rounded-xl p-4 bg-white text-center hover:border-emerald-600 transition">
                   <input
                     type="file"
                     accept="application/pdf,image/*"
@@ -248,27 +248,13 @@ export default function NewPurchaseRequestPage() {
                     id="bypass-proof-input"
                   />
                   <label htmlFor="bypass-proof-input" className="cursor-pointer block space-y-1">
-                    <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 inline-block">
-                      📁 {attachedFileName ? 'Change Attached Approval Letter' : 'Upload Signed Letter (PDF / Image)'}
+                    <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-md border border-emerald-200 inline-block">
+                      📁 {attachedFileName ? 'Change Attached Approval Letter' : 'Upload Signed Executive Letter'}
                     </span>
-                    <p className="text-[10px] text-slate-400">
-                      {attachedFileName || 'Select scanned PDF or photo of signed letter'}
+                    <p className="text-[10px] font-mono text-slate-500 mt-1">
+                      {attachedFileName || adminProofFilePath || 'Select scanned PDF or photo of signed letter'}
                     </p>
                   </label>
-                </div>
-
-                <div>
-                  <input
-                    type="text"
-                    required={isDirectPoBypass}
-                    className={`${inputClass(!!fieldErrors?.adminProofFilePath)} font-mono text-xs`}
-                    placeholder="/uploads/1785080140890-signed_executive_letter.pdf"
-                    value={adminProofFilePath}
-                    onChange={(e) => setAdminProofFilePath(e.target.value)}
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Auto-populated upon file upload or enter storage path URL directly.
-                  </p>
                 </div>
               </div>
 
@@ -279,7 +265,7 @@ export default function NewPurchaseRequestPage() {
           )}
         </Card>
 
-        {/* ITEMS REQUESTED SECTION */}
+        {/* ITEMS REQUESTED SCHEDULE */}
         <Card className="space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <div>
@@ -293,7 +279,6 @@ export default function NewPurchaseRequestPage() {
             </span>
           </div>
 
-          {/* Desktop/Tablet Column Header Legend */}
           <div className="hidden sm:grid grid-cols-12 gap-3 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
             <div className="col-span-8">Item Description &amp; Technical Specifications</div>
             <div className="col-span-3">Quantity</div>
@@ -306,7 +291,6 @@ export default function NewPurchaseRequestPage() {
                 key={index}
                 className="grid grid-cols-12 gap-3 items-center bg-slate-50/80 p-3 rounded-xl border border-slate-200/90 hover:border-slate-300 transition"
               >
-                {/* Item Name / Specifications */}
                 <div className="col-span-12 sm:col-span-8">
                   <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
                     Item Description &amp; Specs
@@ -321,7 +305,6 @@ export default function NewPurchaseRequestPage() {
                   />
                 </div>
 
-                {/* Quantity */}
                 <div className="col-span-10 sm:col-span-3">
                   <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
                     Quantity
@@ -337,7 +320,6 @@ export default function NewPurchaseRequestPage() {
                   />
                 </div>
 
-                {/* Actions */}
                 <div className="col-span-2 sm:col-span-1 flex items-center justify-end">
                   <button
                     type="button"
