@@ -37,6 +37,18 @@ interface ItemPayloadNode {
   unitPrice?: number;
 }
 
+interface AuditLogNode {
+  id?: string;
+  createdAt: string;
+  previousState: PRStatus | null;
+  newState: PRStatus;
+  remarks: string | null;
+  actor: {
+    email: string;
+    role: Role;
+  };
+}
+
 interface PendingPRNode {
   id: string;
   justification: string;
@@ -46,6 +58,7 @@ interface PendingPRNode {
   createdAt: string;
   department: { code: string; name: string };
   itemsPayload?: ItemPayloadNode[] | unknown;
+  auditLogs?: AuditLogNode[];
 }
 
 function deriveItemSummaryTitle(itemsPayload: unknown): string {
@@ -69,16 +82,26 @@ export default function BusinessOfficeEvaluationPage() {
   const [activeUser, setActiveUser] = useState<AuthUser | null>(null);
   const [userLoading, setUserLoading] = useState<boolean>(true);
 
+  // Form State
   const [targetPrId, setTargetPrId] = useState<string>('');
   const [evaluationAction, setEvaluationAction] = useState<'APPROVE' | 'DECLINE' | 'RETURN_FOR_CORRECTION' | ''>('');
   const [remarks, setRemarks] = useState<string>('');
 
+  // Clearances
   const [necessityVerified, setNecessityVerified] = useState<boolean>(false);
   const [budgetAvailable, setBudgetAvailable] = useState<boolean>(false);
 
+  // Queue Storage & Enterprise Two-Tier Queue Filter States
   const [activeQueue, setActiveQueue] = useState<PendingPRNode[]>([]);
   const [queueLoading, setQueueLoading] = useState<boolean>(true);
+  
+  // Tier 1 Primary Segment Control ('ACTION_REQUIRED' vs 'DECISION_HISTORY')
+  const [primarySegment, setPrimarySegment] = useState<'ACTION_REQUIRED' | 'DECISION_HISTORY'>('ACTION_REQUIRED');
+  
+  // Tier 2 Secondary Sub-Filter ('ALL' | 'RETURNED' | 'DECLINED')
+  const [historySubFilter, setHistorySubFilter] = useState<'ALL' | 'RETURNED' | 'DECLINED'>('ALL');
 
+  // Status Responses
   const [systemError, setSystemError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ZodFormErrors | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -105,10 +128,13 @@ export default function BusinessOfficeEvaluationPage() {
       });
       const resData = await response.json();
       if (response.ok) {
-        const evaluationTasks = (resData.data || []).filter(
-          (item: PendingPRNode) => item.status === PRStatus.Pending_Business_Approval
+        const fetchedTasks = (resData.data || []).filter(
+          (item: PendingPRNode) =>
+            item.status === PRStatus.Pending_Business_Approval ||
+            item.status === PRStatus.Returned_for_Correction ||
+            item.status === PRStatus.Declined
         );
-        setActiveQueue(evaluationTasks);
+        setActiveQueue(fetchedTasks);
       }
     } catch (err) {
       console.error('Queue sync failed:', err);
@@ -203,13 +229,39 @@ export default function BusinessOfficeEvaluationPage() {
     );
   }
 
-  const queueTasks: QueueTask[] = activeQueue.map((task) => ({
-    id: task.id,
-    title: deriveItemSummaryTitle(task.itemsPayload),
-    subtitle: task.isDirectPoBypass ? `${task.department.code} • FAST-TRACK` : task.department.code,
-    dateLabel: new Date(task.createdAt).toLocaleDateString(),
-    justificationPreview: task.justification,
-  }));
+  // Tier 1 Filtering
+  const actionRequiredQueue = activeQueue.filter((item) => item.status === PRStatus.Pending_Business_Approval);
+  const decisionHistoryQueue = activeQueue.filter(
+    (item) => item.status === PRStatus.Returned_for_Correction || item.status === PRStatus.Declined
+  );
+
+  // Tier 2 Filtering (Inside Decision History)
+  const filteredHistoryQueue = decisionHistoryQueue.filter((item) => {
+    if (historySubFilter === 'RETURNED') return item.status === PRStatus.Returned_for_Correction;
+    if (historySubFilter === 'DECLINED') return item.status === PRStatus.Declined;
+    return true; // 'ALL'
+  });
+
+  const displayedQueueNodes = primarySegment === 'ACTION_REQUIRED' ? actionRequiredQueue : filteredHistoryQueue;
+
+  const queueTasks: QueueTask[] = displayedQueueNodes.map((task) => {
+    let statusBadge = task.department.code;
+    if (task.status === PRStatus.Returned_for_Correction) {
+      statusBadge = `${task.department.code} • RETURNED`;
+    } else if (task.status === PRStatus.Declined) {
+      statusBadge = `${task.department.code} • DECLINED`;
+    } else if (task.isDirectPoBypass) {
+      statusBadge = `${task.department.code} • FAST-TRACK`;
+    }
+
+    return {
+      id: task.id,
+      title: deriveItemSummaryTitle(task.itemsPayload),
+      subtitle: statusBadge,
+      dateLabel: new Date(task.createdAt).toLocaleDateString(),
+      justificationPreview: task.justification,
+    };
+  });
 
   const selectedPR = activeQueue.find((req) => req.id === targetPrId);
   const itemsList: ItemPayloadNode[] = selectedPR && Array.isArray(selectedPR.itemsPayload)
@@ -221,6 +273,10 @@ export default function BusinessOfficeEvaluationPage() {
     const price = item.unitPrice || 0;
     return acc + (price * item.quantity);
   }, 0);
+
+  const adminAuditFeedback = selectedPR?.auditLogs?.find(
+    (log) => log.actor.role === Role.Admin_Office || log.remarks
+  );
 
   return (
     <PageShell>
@@ -235,10 +291,18 @@ export default function BusinessOfficeEvaluationPage() {
       {successMessage && <SuccessBanner>{successMessage}</SuccessBanner>}
 
       <ReviewWorkspace
-        queueTitle="Requests Awaiting Evaluation"
+        queueTitle={
+          primarySegment === 'ACTION_REQUIRED'
+            ? 'Action Required Queue'
+            : 'Decision History Queue'
+        }
         tasks={queueTasks}
         loading={queueLoading}
-        emptyMessage="No purchase requests are currently waiting for evaluation."
+        emptyMessage={
+          primarySegment === 'ACTION_REQUIRED'
+            ? 'Inbox Clear: No requisitions are currently awaiting evaluation.'
+            : 'No matching records found in decision history.'
+        }
         selectedId={targetPrId}
         onSelect={(id) => {
           setTargetPrId(id);
@@ -250,6 +314,98 @@ export default function BusinessOfficeEvaluationPage() {
           }
         }}
       >
+        {/* ENTERPRISE TWO-TIER QUEUE FILTERING SYSTEM */}
+        <div className="space-y-3 mb-5 font-sans">
+          
+          {/* TIER 1: PRIMARY SEGMENT CONTROL */}
+          <div className="bg-slate-100 p-1.5 rounded-xl border border-slate-200/80 flex gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setPrimarySegment('ACTION_REQUIRED');
+                setTargetPrId('');
+              }}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                primarySegment === 'ACTION_REQUIRED'
+                  ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/60'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+              }`}
+            >
+              <span>📥 Action Required</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                primarySegment === 'ACTION_REQUIRED' ? 'bg-emerald-100 text-emerald-800 font-black' : 'bg-slate-200 text-slate-600 font-bold'
+              }`}>
+                {actionRequiredQueue.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPrimarySegment('DECISION_HISTORY');
+                setTargetPrId('');
+              }}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                primarySegment === 'DECISION_HISTORY'
+                  ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/60'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+              }`}
+            >
+              <span>📜 Decision History</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                primarySegment === 'DECISION_HISTORY' ? 'bg-amber-100 text-amber-900 font-black' : 'bg-slate-200 text-slate-600 font-bold'
+              }`}>
+                {decisionHistoryQueue.length}
+              </span>
+            </button>
+          </div>
+
+          {/* TIER 2: SECONDARY SUB-FILTER PILLS (Visible strictly when Decision History is active) */}
+          {primarySegment === 'DECISION_HISTORY' && (
+            <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200/60 animate-in fade-in slide-in-from-top-1 duration-150">
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider pl-1">
+                Filter History:
+              </span>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setHistorySubFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                    historySubFilter === 'ALL'
+                      ? 'bg-slate-800 text-white shadow-2xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  All ({decisionHistoryQueue.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistorySubFilter('RETURNED')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                    historySubFilter === 'RETURNED'
+                      ? 'bg-amber-600 text-white shadow-2xs'
+                      : 'bg-white text-amber-800 hover:bg-amber-50 border border-amber-200'
+                  }`}
+                >
+                  ↶ Returned ({decisionHistoryQueue.filter(i => i.status === PRStatus.Returned_for_Correction).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistorySubFilter('DECLINED')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                    historySubFilter === 'DECLINED'
+                      ? 'bg-rose-600 text-white shadow-2xs'
+                      : 'bg-white text-rose-800 hover:bg-rose-50 border border-rose-200'
+                  }`}
+                >
+                  ✕ Declined ({decisionHistoryQueue.filter(i => i.status === PRStatus.Declined).length})
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
+
         <form onSubmit={handleEvaluationSubmit} className="space-y-6">
           <div>
             <FieldLabel>Target Purchase Request (Requisition Ref Code)</FieldLabel>
@@ -290,6 +446,27 @@ export default function BusinessOfficeEvaluationPage() {
                   </a>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* EXECUTIVE ADMIN & PRIOR AUDIT FEEDBACK CALLOUT */}
+          {selectedPR && adminAuditFeedback && (
+            <div className="bg-amber-50 border-l-4 border-amber-500 rounded-r-xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-900 uppercase font-mono tracking-wider">
+                  ⚠️ Prior Audit / Admin Office Feedback
+                </span>
+                <span className="text-[10px] font-mono font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded">
+                  {adminAuditFeedback.actor.role.replace(/_/g, ' ')}
+                </span>
+              </div>
+              <p className="text-xs text-amber-950 italic bg-white p-3 rounded-lg border border-amber-200/80 leading-relaxed">
+                "{adminAuditFeedback.remarks || 'No specific remark recorded.'}"
+              </p>
+              <div className="flex justify-between text-[10px] font-mono text-amber-800/80 pt-0.5">
+                <span>Actor: {adminAuditFeedback.actor.email}</span>
+                <span>Date: {new Date(adminAuditFeedback.createdAt).toLocaleString()}</span>
+              </div>
             </div>
           )}
 
@@ -368,6 +545,28 @@ export default function BusinessOfficeEvaluationPage() {
                   </table>
                 </div>
               </div>
+
+              {/* AUDIT LOG HISTORY TIMELINE */}
+              {selectedPR.auditLogs && selectedPR.auditLogs.length > 0 && (
+                <div className="border-t border-slate-200 pt-3 space-y-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">
+                    Workflow Audit Trail History
+                  </span>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {selectedPR.auditLogs.map((log, idx) => (
+                      <div key={idx} className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs space-y-0.5">
+                        <div className="flex justify-between items-center text-[10px] font-mono text-slate-500">
+                          <span className="font-bold text-slate-800">{log.actor.role.replace(/_/g, ' ')} ({log.actor.email})</span>
+                          <span>{new Date(log.createdAt).toLocaleString()}</span>
+                        </div>
+                        <p className="text-slate-700 text-[11px]">
+                          <strong className="text-slate-900">[{log.newState.replace(/_/g, ' ')}]</strong> {log.remarks}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs">

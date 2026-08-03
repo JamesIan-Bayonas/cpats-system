@@ -1,3 +1,4 @@
+// src/app/api/pr/queue/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Role, PRStatus } from '@prisma/client';
 import { prisma } from '@/shared/prisma';
@@ -36,7 +37,15 @@ export async function POST(request: NextRequest) {
         const regionalRequests = await prisma.purchaseRequest.findMany({
           where: { departmentId: targetedDepartmentId },
           orderBy: { updatedAt: 'desc' },
-          include: { department: { select: { code: true, name: true } } }
+          include: {
+            department: { select: { code: true, name: true } },
+            auditLogs: {
+              orderBy: { createdAt: 'desc' },
+              include: {
+                actor: { select: { email: true, role: true } }
+              }
+            }
+          }
         });
         return NextResponse.json({ success: true, data: regionalRequests }, { status: 200 });
 
@@ -44,13 +53,23 @@ export async function POST(request: NextRequest) {
         const businessQueue = await prisma.purchaseRequest.findMany({
           where: {
             status: {
-              in: [PRStatus.Pending_Business_Approval, PRStatus.Awaiting_Check_Issuance]
+              in: [
+                PRStatus.Pending_Business_Approval,
+                PRStatus.Awaiting_Check_Issuance,
+                PRStatus.Returned_for_Correction
+              ]
             }
           },
           orderBy: { createdAt: 'asc' },
           include: {
             department: { select: { code: true, name: true } },
-            purchaseOrders: { select: { id: true, poNumber: true, isCheckIssued: true } }
+            purchaseOrders: { select: { id: true, poNumber: true, isCheckIssued: true } },
+            auditLogs: {
+              orderBy: { createdAt: 'desc' },
+              include: {
+                actor: { select: { email: true, role: true } }
+              }
+            }
           }
         });
         return NextResponse.json({ success: true, data: businessQueue }, { status: 200 });
@@ -59,7 +78,15 @@ export async function POST(request: NextRequest) {
         const adminQueue = await prisma.purchaseRequest.findMany({
           where: { status: PRStatus.Pending_Admin_Approval },
           orderBy: { createdAt: 'asc' },
-          include: { department: { select: { code: true, name: true } } }
+          include: {
+            department: { select: { code: true, name: true } },
+            auditLogs: {
+              orderBy: { createdAt: 'desc' },
+              include: {
+                actor: { select: { email: true, role: true } }
+              }
+            }
+          }
         });
         return NextResponse.json({ success: true, data: adminQueue }, { status: 200 });
 

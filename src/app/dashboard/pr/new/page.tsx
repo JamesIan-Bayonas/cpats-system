@@ -16,8 +16,9 @@ import {
   ActionButton,
 } from '@/components/ui/WorkflowUI';
 
-interface PurchaseItem {
-  itemName: string;
+interface PurchaseItemState {
+  category: string;
+  specs: string;
   quantity: number;
 }
 
@@ -31,6 +32,17 @@ interface ZodFormErrors {
   items?: Record<string, unknown>;
 }
 
+const ITEM_CATEGORIES = [
+  'Monitors & Displays',
+  'Cables & Connectors (HDMI, VGA, LAN)',
+  'Desktop Computers & Laptops',
+  'Peripherals (Mouse, Keyboard, Webcam)',
+  'Printers, Scanners & Consumables',
+  'Networking Equipment (Switches, Routers)',
+  'Office Supplies & Stationery',
+  'Other / Custom Item',
+];
+
 export default function NewPurchaseRequestPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -43,8 +55,8 @@ export default function NewPurchaseRequestPage() {
   const [adminProofFilePath, setAdminProofFilePath] = useState<string>('');
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
-  const [items, setItems] = useState<PurchaseItem[]>([
-    { itemName: '', quantity: 1 },
+  const [items, setItems] = useState<PurchaseItemState[]>([
+    { category: 'Monitors & Displays', specs: '', quantity: 1 },
   ]);
 
   const [systemError, setSystemError] = useState<string | null>(null);
@@ -85,17 +97,17 @@ export default function NewPurchaseRequestPage() {
     }
   };
 
-  const handleItemChange = (index: number, field: keyof PurchaseItem, value: string | number) => {
+  const handleItemChange = (index: number, field: keyof PurchaseItemState, value: string | number) => {
     const updatedItems = [...items];
-    if (field === 'itemName') {
-      updatedItems[index][field] = value as string;
-    } else {
+    if (field === 'quantity') {
       updatedItems[index][field] = Number(value);
+    } else {
+      updatedItems[index][field] = value as string;
     }
     setItems(updatedItems);
   };
 
-  const addItemRow = () => setItems([...items, { itemName: '', quantity: 1 }]);
+  const addItemRow = () => setItems([...items, { category: 'Monitors & Displays', specs: '', quantity: 1 }]);
 
   const removeItemRow = (index: number) => {
     if (items.length > 1) setItems(items.filter((_, i) => i !== index));
@@ -111,13 +123,26 @@ export default function NewPurchaseRequestPage() {
       return;
     }
 
+    // Format items into standard schema payload [{ itemName: string, quantity: number }]
+    const formattedPayloadItems = items.map((item) => {
+      const isOther = item.category === 'Other / Custom Item';
+      const synthesizedName = !isOther && item.category
+        ? (item.specs.trim() ? `${item.category} — ${item.specs.trim()}` : item.category)
+        : (item.specs.trim() || 'Custom Item');
+
+      return {
+        itemName: synthesizedName,
+        quantity: item.quantity,
+      };
+    });
+
     startTransition(async () => {
       try {
         const payload = {
           justification,
           isDirectPoBypass,
           ...(isDirectPoBypass && { adminProofFilePath }),
-          items,
+          items: formattedPayloadItems,
         };
 
         const response = await fetch('/api/pr/create', {
@@ -187,21 +212,12 @@ export default function NewPurchaseRequestPage() {
 
           <textarea
             required
-            rows={4}
+            rows={3}
             className={inputClass(!!fieldErrors?.justification)}
-            placeholder="e.g., Procurement of 5 high-resolution webcams and USB barcode scanners for College of Computer Studies Laboratory 3 to support academic coursework, practical examinations, and COA asset compliance verification..."
+            placeholder="e.g., Procurement of lab equipment for CCS Laboratory 3 to support coursework."
             value={justification}
             onChange={(e) => setJustification(e.target.value)}
           />
-
-          <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-3 text-[11px] text-slate-500 leading-relaxed space-y-1">
-            <span className="font-bold text-slate-700 block uppercase tracking-wider text-[9px]">
-              💡 Audit Compliance Guidance
-            </span>
-            <p>
-              Provide clear operational details (Target Location, Specific Academic/Administrative Purpose, and Urgency). Detailed justifications reduce evaluation delays during Business Office budget verification.
-            </p>
-          </div>
 
           {fieldErrors?.justification?._errors && (
             <FieldError>{fieldErrors.justification._errors[0]}</FieldError>
@@ -265,13 +281,13 @@ export default function NewPurchaseRequestPage() {
           )}
         </Card>
 
-        {/* ITEMS REQUESTED SCHEDULE */}
+        {/* CATEGORIZED ITEMS REQUESTED SCHEDULE */}
         <Card className="space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Requested Items Schedule</h3>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Itemize specific equipment, technical specifications, and required quantities.
+                Select item category and specify technical details or quantities.
               </p>
             </div>
             <span className="text-xs font-bold text-emerald-800 bg-emerald-100/70 px-3 py-1 rounded-full border border-emerald-200">
@@ -279,9 +295,11 @@ export default function NewPurchaseRequestPage() {
             </span>
           </div>
 
+          {/* Desktop/Tablet Column Header Legend */}
           <div className="hidden sm:grid grid-cols-12 gap-3 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
-            <div className="col-span-8">Item Description &amp; Technical Specifications</div>
-            <div className="col-span-3">Quantity</div>
+            <div className="col-span-4">Item Category</div>
+            <div className="col-span-5">Technical Specifications &amp; Details</div>
+            <div className="col-span-2">Quantity</div>
             <div className="col-span-1 text-right">Action</div>
           </div>
 
@@ -291,21 +309,45 @@ export default function NewPurchaseRequestPage() {
                 key={index}
                 className="grid grid-cols-12 gap-3 items-center bg-slate-50/80 p-3 rounded-xl border border-slate-200/90 hover:border-slate-300 transition"
               >
-                <div className="col-span-12 sm:col-span-8">
+                {/* Category Dropdown */}
+                <div className="col-span-12 sm:col-span-4">
                   <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Item Description &amp; Specs
+                    Item Category
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 outline-none transition font-sans cursor-pointer"
+                    value={item.category}
+                    onChange={(e) => handleItemChange(index, 'category', e.target.value)}
+                  >
+                    {ITEM_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Technical Specifications / Details */}
+                <div className="col-span-12 sm:col-span-5">
+                  <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Technical Specifications
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g., Logitech C922 Pro HD Webcam (1080p/30fps with tripod)"
+                    required={item.category === 'Other / Custom Item'}
+                    placeholder={
+                      item.category === 'Other / Custom Item'
+                        ? 'Specify item description and technical details...'
+                        : 'e.g., 27-inch IPS 1080p 75Hz monitor with HDMI'
+                    }
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700 outline-none transition font-sans"
-                    value={item.itemName}
-                    onChange={(e) => handleItemChange(index, 'itemName', e.target.value)}
+                    value={item.specs}
+                    onChange={(e) => handleItemChange(index, 'specs', e.target.value)}
                   />
                 </div>
 
-                <div className="col-span-10 sm:col-span-3">
+                {/* Quantity */}
+                <div className="col-span-10 sm:col-span-2">
                   <label className="block sm:hidden text-[10px] font-bold text-slate-500 uppercase mb-1">
                     Quantity
                   </label>
@@ -320,6 +362,7 @@ export default function NewPurchaseRequestPage() {
                   />
                 </div>
 
+                {/* Remove Action */}
                 <div className="col-span-2 sm:col-span-1 flex items-center justify-end">
                   <button
                     type="button"
