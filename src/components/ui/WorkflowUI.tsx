@@ -25,7 +25,7 @@ export function deriveItemSummaryTitle(itemsPayload: any, fallbackJustification:
 }
 
 export function PageShell({ children }: { children: React.ReactNode }) {
-  return <main className="max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-8 space-y-4 sm:space-y-8 font-sans">{children}</main>;
+  return <main className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8 space-y-4 sm:space-y-8 font-sans">{children}</main>;
 }
 
 export function StageHeader({
@@ -157,6 +157,7 @@ export interface QueueTask {
   justificationPreview?: string;
 }
 
+// Upgraded Phase 3 Master-Detail Review Workspace
 export function ReviewWorkspace({
   queueTitle,
   tasks,
@@ -174,50 +175,112 @@ export function ReviewWorkspace({
   onSelect: (id: string) => void;
   children: React.ReactNode;
 }) {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredTasks = tasks.filter((t) => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      t.title.toLowerCase().includes(q) ||
+      t.subtitle.toLowerCase().includes(q) ||
+      t.id.toLowerCase().includes(q) ||
+      (t.justificationPreview && t.justificationPreview.toLowerCase().includes(q))
+    );
+  });
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 items-start">
-      <Card className="lg:col-span-1">
-        <h3 className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">{queueTitle}</h3>
-
-        {loading ? (
-          <div className="p-4 text-center text-xs text-slate-400">Loading workspace queue...</div>
-        ) : tasks.length === 0 ? (
-          <div className="p-4 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50">
-            {emptyMessage}
+    <div className="grid grid-cols-12 gap-4 sm:gap-6 items-start">
+      {/* LEFT TASK SIDEBAR: col-span-12 lg:col-span-4 with sticky positioning */}
+      <div className="col-span-12 lg:col-span-4 lg:sticky lg:top-20 space-y-3">
+        <Card className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              {queueTitle}
+            </h3>
+            <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">
+              {filteredTasks.length} of {tasks.length}
+            </span>
           </div>
-        ) : (
-          <div className="space-y-2 max-h-[300px] lg:max-h-[500px] overflow-y-auto pr-1">
-            {tasks.map((task) => (
+
+          {/* Search Queue Filter */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search by ref, item, or dept…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-7 py-2 outline-none focus:bg-white focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition font-sans"
+            />
+            <span className="absolute left-2.5 top-2.5 text-slate-400 text-xs">🔍</span>
+            {searchQuery && (
               <button
-                key={task.id}
                 type="button"
-                onClick={() => onSelect(task.id)}
-                className={`w-full text-left p-3 rounded-lg border transition duration-150 cursor-pointer min-h-[44px] ${
-                  selectedId === task.id
-                    ? 'border-emerald-700 bg-emerald-50/60 ring-1 ring-emerald-700'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                }`}
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
               >
-                <div className="flex justify-between items-center mb-1">
-                  <span className="font-mono text-[10px] font-bold text-emerald-800 bg-emerald-100/80 border border-emerald-200 px-1.5 py-0.5 rounded">
-                    {task.subtitle}
-                  </span>
-                  <span className="text-[10px] text-slate-400">{task.dateLabel}</span>
-                </div>
-                <p className="text-xs sm:text-sm font-bold text-slate-900 line-clamp-1 leading-snug">{task.title}</p>
-                {task.justificationPreview && (
-                  <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 italic" title={task.justificationPreview}>
-                    "{task.justificationPreview}"
-                  </p>
-                )}
-                <span className="block font-mono text-[9px] text-slate-400 truncate mt-1">Ref: {task.id}</span>
+                ✕
               </button>
-            ))}
+            )}
           </div>
-        )}
-      </Card>
 
-      <Card className="lg:col-span-2">{children}</Card>
+          {/* Task List */}
+          {loading ? (
+            <div className="p-8 text-center text-xs text-slate-400">Loading workspace queue...</div>
+          ) : filteredTasks.length === 0 ? (
+            <div className="p-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50">
+              {searchQuery ? 'No matching requests found.' : emptyMessage}
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[calc(100vh-250px)] overflow-y-auto pr-1">
+              {filteredTasks.map((task) => {
+                const isSelected = selectedId === task.id;
+                return (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => onSelect(task.id)}
+                    className={`w-full text-left p-3 rounded-xl border transition-all duration-150 cursor-pointer min-h-[44px] ${
+                      isSelected
+                        ? 'border-emerald-700 bg-emerald-50/70 ring-1 ring-emerald-700 shadow-xs'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="font-mono text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-200 px-1.5 py-0.5 rounded">
+                        {task.subtitle}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">{task.dateLabel}</span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-900 line-clamp-1 leading-snug">
+                      {task.title}
+                    </p>
+                    {task.justificationPreview && (
+                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-1 italic">
+                        "{task.justificationPreview}"
+                      </p>
+                    )}
+                    <div className="mt-2 pt-1.5 border-t border-slate-100 flex justify-between items-center">
+                      <span className="font-mono text-[9px] text-slate-400 truncate max-w-[150px]">
+                        Ref: {task.id.substring(0, 13)}…
+                      </span>
+                      {isSelected && (
+                        <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">
+                          Active Selection ▸
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* RIGHT DETAIL DECK: col-span-12 lg:col-span-8 */}
+      <div className="col-span-12 lg:col-span-8">
+        <Card className="p-5 sm:p-7">{children}</Card>
+      </div>
     </div>
   );
 }
