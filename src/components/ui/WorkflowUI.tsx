@@ -1,31 +1,129 @@
-// Shared primitives for all /dashboard/* workflow pages — Optimized for Mobile Ergonomics.
+// src/components/ui/WorkflowUI.tsx
+// Shared enterprise primitives for all /dashboard/* workflow pages.
+// Presentation-only overhaul: no business logic, API contracts, or workflow rules are changed.
 'use client';
 
 import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 
-export function deriveItemSummaryTitle(itemsPayload: any, fallbackJustification: string = 'Purchase Requisition'): string {
+export function deriveItemSummaryTitle(
+  itemsPayload: any,
+  fallbackJustification: string = 'Purchase Requisition',
+): string {
   if (!itemsPayload) return fallbackJustification;
+
   try {
-    const parsed = typeof itemsPayload === 'string' ? JSON.parse(itemsPayload) : itemsPayload;
+    const parsed =
+      typeof itemsPayload === 'string' ? JSON.parse(itemsPayload) : itemsPayload;
+
     if (Array.isArray(parsed) && parsed.length > 0) {
       const first = parsed[0];
       const itemName = first.itemName || first.name || 'Requested Item';
       const qty = first.quantity || first.qty || 1;
       const totalCount = parsed.length;
+
       if (totalCount === 1) {
         return `${itemName} (x${qty})`;
       }
-      return `${itemName} (x${qty}) +${totalCount - 1} more item${totalCount - 1 > 1 ? 's' : ''}`;
+
+      return `${itemName} (x${qty}) +${totalCount - 1} more item${
+        totalCount - 1 > 1 ? 's' : ''
+      }`;
     }
   } catch {
-    // Fallback on JSON parse exception
+    // Preserve original fallback behavior on malformed JSON.
   }
+
   return fallbackJustification;
 }
 
+function SearchIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className={className}
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.2-3.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function XIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className={className}
+    >
+      <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className={className}
+    >
+      <path d="m5 12.5 4.2 4.2L19 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className={className}
+    >
+      <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AlertIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className={className}
+    >
+      <path
+        d="M12 3.5 21 20H3l9-16.5Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M12 9v4.5M12 17h.01" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function PageShell({ children }: { children: React.ReactNode }) {
-  return <main className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8 space-y-4 sm:space-y-8 font-sans">{children}</main>;
+  return (
+    <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+      <div className="space-y-5 sm:space-y-6">{children}</div>
+    </main>
+  );
 }
 
 export function StageHeader({
@@ -40,23 +138,43 @@ export function StageHeader({
   meta?: { label: string; value: string };
 }) {
   return (
-    <Card className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
-      <div>
-        <span className="inline-block text-[9px] sm:text-[10px] font-bold font-mono text-emerald-800 bg-emerald-100/60 border border-emerald-200/80 px-2.5 py-1 rounded-md uppercase tracking-wide">
-          {eyebrow}
-        </span>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-2">{title}</h2>
-        <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl leading-relaxed">{description}</p>
-      </div>
-      {meta && (
-        <div className="text-left sm:text-right shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
-          <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 block uppercase tracking-wider">{meta.label}</span>
-          <span className="text-xs font-mono font-bold text-slate-700 bg-slate-50 px-2.5 sm:px-3 py-1 rounded-md border border-slate-200 inline-block mt-1">
-            {meta.value}
-          </span>
+    <section
+      aria-labelledby="workflow-stage-title"
+      className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_rgba(15,23,42,0.03)]"
+    >
+      <div className="absolute inset-y-0 left-0 w-1 bg-emerald-700" />
+      <div className="flex flex-col gap-5 px-5 py-5 sm:px-7 sm:py-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 max-w-3xl">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-800">
+              {eyebrow}
+            </span>
+          </div>
+
+          <h1
+            id="workflow-stage-title"
+            className="text-[1.35rem] font-semibold tracking-[-0.025em] text-slate-950 sm:text-[1.65rem]"
+          >
+            {title}
+          </h1>
+
+          <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600 sm:text-sm">
+            {description}
+          </p>
         </div>
-      )}
-    </Card>
+
+        {meta && (
+          <dl className="shrink-0 border-t border-slate-100 pt-4 lg:min-w-56 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              {meta.label}
+            </dt>
+            <dd className="mt-1.5 break-all font-mono text-xs font-semibold text-slate-700">
+              {meta.value}
+            </dd>
+          </dl>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -71,7 +189,9 @@ export function Card({
   const defaultBg = hasCustomBg ? '' : 'bg-white';
 
   return (
-    <div className={`${defaultBg} border border-slate-200/80 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.04)] p-4 sm:p-6 transition-all duration-150 ${className}`}>
+    <div
+      className={`${defaultBg} rounded-2xl border border-slate-200/80 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.035),0_6px_20px_rgba(15,23,42,0.025)] sm:p-6 ${className}`}
+    >
       {children}
     </div>
   );
@@ -79,42 +199,62 @@ export function Card({
 
 export function ErrorBanner({ children }: { children: React.ReactNode }) {
   return (
-    <div className="p-3.5 sm:p-4 bg-rose-50 border-l-4 border-rose-500 rounded-r-lg text-rose-800 text-xs sm:text-sm font-medium flex items-start gap-2.5">
-      <svg className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-      <span>{children}</span>
+    <div
+      role="alert"
+      className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3.5 text-[13px] font-medium leading-5 text-rose-900 shadow-[0_1px_2px_rgba(15,23,42,0.02)]"
+    >
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+        <AlertIcon className="size-4" />
+      </span>
+      <span className="pt-1">{children}</span>
     </div>
   );
 }
 
 export function SuccessBanner({ children }: { children: React.ReactNode }) {
   return (
-    <div className="p-3.5 sm:p-4 bg-emerald-50 border-l-4 border-emerald-600 rounded-r-lg text-emerald-900 text-xs sm:text-sm font-medium flex items-start gap-2.5">
-      <svg className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-      </svg>
-      <span>{children}</span>
+    <div
+      role="status"
+      className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3.5 text-[13px] font-medium leading-5 text-emerald-950 shadow-[0_1px_2px_rgba(15,23,42,0.02)]"
+    >
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+        <CheckIcon className="size-4" />
+      </span>
+      <span className="pt-1">{children}</span>
     </div>
   );
 }
 
 export function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="block text-xs sm:text-[13px] font-semibold text-slate-800 tracking-normal mb-1.5">
+    <label className="mb-1.5 block text-[12px] font-semibold leading-5 text-slate-800">
       {children}
     </label>
   );
 }
 
 export function FieldError({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs text-rose-600 font-medium mt-1">{children}</p>;
+  return (
+    <p className="mt-1.5 flex items-start gap-1.5 text-[11px] font-medium leading-4 text-rose-700">
+      <span aria-hidden="true" className="mt-[1px]">
+        •
+      </span>
+      <span>{children}</span>
+    </p>
+  );
 }
 
 export const inputClass = (hasError?: boolean) =>
-  `w-full min-h-[44px] px-3.5 py-2.5 bg-white border rounded-lg text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20 outline-none transition duration-150 ease-in-out ${
-    hasError ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300'
-  }`;
+  [
+    'w-full min-h-11 rounded-lg border bg-white px-3.5 py-2.5',
+    'text-[13px] text-slate-900 placeholder:text-slate-400',
+    'shadow-[inset_0_1px_0_rgba(15,23,42,0.02)] outline-none transition-[border-color,box-shadow,background-color] duration-150',
+    'focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10',
+    'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500',
+    hasError
+      ? 'border-rose-400 ring-4 ring-rose-500/10 focus:border-rose-500 focus:ring-rose-500/10'
+      : 'border-slate-300 hover:border-slate-400',
+  ].join(' ');
 
 export function CheckItem({
   id,
@@ -132,18 +272,38 @@ export function CheckItem({
   return (
     <label
       htmlFor={id}
-      className="flex items-start gap-3 p-3 sm:p-4 rounded-lg border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-colors duration-150 cursor-pointer min-h-[44px]"
+      className={`group flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border px-3.5 py-3 transition-[border-color,background-color,box-shadow] duration-150 ${
+        checked
+          ? 'border-emerald-300 bg-emerald-50/70 shadow-[0_0_0_1px_rgba(5,150,105,0.05)]'
+          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70'
+      }`}
     >
-      <input
-        id={id}
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 mt-0.5 accent-emerald-700 rounded cursor-pointer shrink-0"
-      />
-      <span className="text-xs sm:text-sm">
-        <span className="font-semibold text-slate-900">{label}</span>
-        {description && <span className="block text-[11px] sm:text-xs text-slate-500 mt-0.5 leading-relaxed">{description}</span>}
+      <span
+        className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+          checked
+            ? 'border-emerald-700 bg-emerald-700 text-white'
+            : 'border-slate-300 bg-white text-transparent group-hover:border-slate-400'
+        }`}
+      >
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="sr-only"
+        />
+        <CheckIcon className="size-3.5" />
+      </span>
+
+      <span className="min-w-0">
+        <span className="block text-[12px] font-semibold leading-5 text-slate-900">
+          {label}
+        </span>
+        {description && (
+          <span className="mt-0.5 block text-[11px] leading-[1.15rem] text-slate-500">
+            {description}
+          </span>
+        )}
       </span>
     </label>
   );
@@ -157,7 +317,24 @@ export interface QueueTask {
   justificationPreview?: string;
 }
 
-// Upgraded Phase 3 Master-Detail Review Workspace
+function QueueSkeleton() {
+  return (
+    <div className="space-y-2 p-1" aria-hidden="true">
+      {[0, 1, 2, 3].map((item) => (
+        <div key={item} className="rounded-xl border border-slate-200 bg-white p-3.5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="h-4 w-24 animate-pulse rounded bg-slate-100" />
+            <div className="h-3 w-16 animate-pulse rounded bg-slate-100" />
+          </div>
+          <div className="mt-3 h-4 w-4/5 animate-pulse rounded bg-slate-100" />
+          <div className="mt-2 h-3 w-full animate-pulse rounded bg-slate-50" />
+          <div className="mt-1 h-3 w-2/3 animate-pulse rounded bg-slate-50" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ReviewWorkspace({
   queueTitle,
   tasks,
@@ -177,111 +354,186 @@ export function ReviewWorkspace({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredTasks = tasks.filter((t) => {
+  const filteredTasks = tasks.filter((task) => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
+
     return (
-      t.title.toLowerCase().includes(q) ||
-      t.subtitle.toLowerCase().includes(q) ||
-      t.id.toLowerCase().includes(q) ||
-      (t.justificationPreview && t.justificationPreview.toLowerCase().includes(q))
+      task.title.toLowerCase().includes(q) ||
+      task.subtitle.toLowerCase().includes(q) ||
+      task.id.toLowerCase().includes(q) ||
+      (task.justificationPreview &&
+        task.justificationPreview.toLowerCase().includes(q))
     );
   });
 
   return (
-    <div className="grid grid-cols-12 gap-4 sm:gap-6 items-start">
-      {/* LEFT TASK SIDEBAR: col-span-12 lg:col-span-4 with sticky positioning */}
-      <div className="col-span-12 lg:col-span-4 lg:sticky lg:top-20 space-y-3">
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              {queueTitle}
-            </h3>
-            <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">
-              {filteredTasks.length} of {tasks.length}
-            </span>
+    <section
+      aria-label="Operational review workspace"
+      className="grid min-w-0 gap-5 lg:grid-cols-[minmax(290px,360px)_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)]"
+    >
+      <aside className="min-w-0 lg:sticky lg:top-28 lg:self-start">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.035),0_8px_24px_rgba(15,23,42,0.025)]">
+          <div className="border-b border-slate-200/80 bg-slate-50/70 px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  Work queue
+                </p>
+                <h2 className="mt-1 truncate text-[13px] font-semibold text-slate-900">
+                  {queueTitle}
+                </h2>
+              </div>
+
+              <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] font-semibold tabular-nums text-slate-600">
+                {filteredTasks.length}/{tasks.length}
+              </span>
+            </div>
+
+            <div className="relative mt-3">
+              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                aria-label={`Search ${queueTitle}`}
+                placeholder="Search ref, item, department…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-9 text-[12px] text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.02)] outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10"
+              />
+
+              {searchQuery && (
+                <button
+                  type="button"
+                  aria-label="Clear queue search"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <XIcon className="size-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Search Queue Filter */}
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search by ref, item, or dept…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-7 py-2 outline-none focus:bg-white focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition font-sans"
-            />
-            <span className="absolute left-2.5 top-2.5 text-slate-400 text-xs">🔍</span>
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
-              >
-                ✕
-              </button>
+          <div className="max-h-[calc(100vh-16rem)] min-h-36 overflow-y-auto overscroll-contain p-2">
+            {loading ? (
+              <QueueSkeleton />
+            ) : filteredTasks.length === 0 ? (
+              <div className="m-1 flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-5 text-center">
+                <div className="flex size-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400">
+                  <SearchIcon className="size-4" />
+                </div>
+                <p className="mt-3 text-[12px] font-medium text-slate-600">
+                  {searchQuery ? 'No matching records' : 'Queue clear'}
+                </p>
+                <p className="mt-1 max-w-64 text-[11px] leading-[1.15rem] text-slate-400">
+                  {searchQuery
+                    ? 'Try a requisition reference, department code, or item keyword.'
+                    : emptyMessage}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {filteredTasks.map((task) => {
+                  const isSelected = selectedId === task.id;
+
+                  return (
+                    <button
+                      key={task.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => onSelect(task.id)}
+                      className={`group relative w-full overflow-hidden rounded-xl border px-3.5 py-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-150 ${
+                        isSelected
+                          ? 'border-emerald-300 bg-emerald-50/75 shadow-[0_0_0_1px_rgba(5,150,105,0.06)]'
+                          : 'border-transparent bg-white hover:border-slate-200 hover:bg-slate-50/80'
+                      }`}
+                    >
+                      {isSelected && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-2 left-0 w-0.5 rounded-r-full bg-emerald-700"
+                        />
+                      )}
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span
+                          className={`truncate font-mono text-[10px] font-semibold uppercase tracking-[0.06em] ${
+                            isSelected ? 'text-emerald-800' : 'text-slate-500'
+                          }`}
+                        >
+                          {task.subtitle}
+                        </span>
+                        <time className="shrink-0 font-mono text-[10px] tabular-nums text-slate-400">
+                          {task.dateLabel}
+                        </time>
+                      </div>
+
+                      <div className="mt-1.5 flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-[12px] font-semibold leading-[1.15rem] text-slate-900">
+                            {task.title}
+                          </p>
+
+                          {task.justificationPreview && (
+                            <p className="mt-1 line-clamp-2 text-[11px] leading-[1.05rem] text-slate-500">
+                              {task.justificationPreview}
+                            </p>
+                          )}
+                        </div>
+
+                        <ChevronRightIcon
+                          className={`mt-0.5 size-4 shrink-0 transition-transform ${
+                            isSelected
+                              ? 'translate-x-0 text-emerald-700'
+                              : '-translate-x-0.5 text-slate-300 group-hover:translate-x-0 group-hover:text-slate-500'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-slate-200/60 pt-2">
+                        <span className="min-w-0 truncate font-mono text-[9px] text-slate-400">
+                          {task.id}
+                        </span>
+                        {isSelected && (
+                          <span className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.1em] text-emerald-700">
+                            In review
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
+        </div>
+      </aside>
 
-          {/* Task List */}
-          {loading ? (
-            <div className="p-8 text-center text-xs text-slate-400">Loading workspace queue...</div>
-          ) : filteredTasks.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50">
-              {searchQuery ? 'No matching requests found.' : emptyMessage}
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[calc(100vh-250px)] overflow-y-auto pr-1">
-              {filteredTasks.map((task) => {
-                const isSelected = selectedId === task.id;
-                return (
-                  <button
-                    key={task.id}
-                    type="button"
-                    onClick={() => onSelect(task.id)}
-                    className={`w-full text-left p-3 rounded-xl border transition-all duration-150 cursor-pointer min-h-[44px] ${
-                      isSelected
-                        ? 'border-emerald-700 bg-emerald-50/70 ring-1 ring-emerald-700 shadow-xs'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="font-mono text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-200 px-1.5 py-0.5 rounded">
-                        {task.subtitle}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-400">{task.dateLabel}</span>
-                    </div>
-                    <p className="text-xs font-bold text-slate-900 line-clamp-1 leading-snug">
-                      {task.title}
-                    </p>
-                    {task.justificationPreview && (
-                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-1 italic">
-                        "{task.justificationPreview}"
-                      </p>
-                    )}
-                    <div className="mt-2 pt-1.5 border-t border-slate-100 flex justify-between items-center">
-                      <span className="font-mono text-[9px] text-slate-400 truncate max-w-[150px]">
-                        Ref: {task.id.substring(0, 13)}…
-                      </span>
-                      {isSelected && (
-                        <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">
-                          Active Selection ▸
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-      </div>
+      <div className="min-w-0">
+        <div className="rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.035),0_10px_30px_rgba(15,23,42,0.03)]">
+          <div className="border-b border-slate-100 px-5 py-3.5 sm:px-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  Record workspace
+                </p>
+                <p className="mt-0.5 text-[12px] font-medium text-slate-700">
+                  {selectedId ? 'Reviewing selected transaction' : 'Awaiting record selection'}
+                </p>
+              </div>
 
-      {/* RIGHT DETAIL DECK: col-span-12 lg:col-span-8 */}
-      <div className="col-span-12 lg:col-span-8">
-        <Card className="p-5 sm:p-7">{children}</Card>
+              {selectedId && (
+                <span className="hidden max-w-72 truncate rounded-md bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-500 sm:block">
+                  {selectedId}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-6 lg:p-7">{children}</div>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -298,38 +550,49 @@ export function DecisionButtonGroup({
   returnLabel?: string;
   declineLabel?: string;
 }) {
-  const base = 'min-h-[44px] py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg border transition-all duration-150 active:scale-[0.99] flex items-center justify-center cursor-pointer';
+  const base =
+    'min-h-11 rounded-lg border px-3.5 py-2.5 text-[12px] font-semibold leading-4 transition-[background-color,border-color,color,box-shadow,transform] duration-150 active:translate-y-px';
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+    <div
+      className="grid grid-cols-1 gap-2.5 sm:grid-cols-3"
+      role="group"
+      aria-label="Decision selection"
+    >
       <button
         type="button"
+        aria-pressed={value === 'APPROVE'}
         onClick={() => onChange('APPROVE')}
         className={`${base} ${
           value === 'APPROVE'
-            ? 'bg-emerald-700 border-emerald-700 text-white shadow-xs'
-            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+            ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm'
+            : 'border-slate-300 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-900'
         }`}
       >
         {approveLabel}
       </button>
+
       <button
         type="button"
+        aria-pressed={value === 'RETURN_FOR_CORRECTION'}
         onClick={() => onChange('RETURN_FOR_CORRECTION')}
         className={`${base} ${
           value === 'RETURN_FOR_CORRECTION'
-            ? 'bg-amber-500 border-amber-500 text-white shadow-xs'
-            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+            ? 'border-amber-500 bg-amber-500 text-slate-950 shadow-sm'
+            : 'border-slate-300 bg-white text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-900'
         }`}
       >
         {returnLabel}
       </button>
+
       <button
         type="button"
+        aria-pressed={value === 'DECLINE'}
         onClick={() => onChange('DECLINE')}
         className={`${base} ${
           value === 'DECLINE'
-            ? 'bg-rose-600 border-rose-600 text-white shadow-xs'
-            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+            ? 'border-rose-700 bg-rose-700 text-white shadow-sm'
+            : 'border-slate-300 bg-white text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-900'
         }`}
       >
         {declineLabel}
@@ -341,10 +604,14 @@ export function DecisionButtonGroup({
 type ButtonVariant = 'primary' | 'outline' | 'danger' | 'ghost';
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
-  primary: 'bg-emerald-700 hover:bg-emerald-800 text-white disabled:bg-slate-300 shadow-xs',
-  outline: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 disabled:opacity-50',
-  danger: 'bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 disabled:opacity-50',
-  ghost: 'bg-transparent hover:bg-slate-100 text-slate-600',
+  primary:
+    'border border-emerald-800 bg-emerald-800 text-white shadow-sm hover:bg-emerald-900 hover:border-emerald-900 disabled:border-slate-300 disabled:bg-slate-300 disabled:text-white',
+  outline:
+    'border border-slate-300 bg-white text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.03)] hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50',
+  danger:
+    'border border-rose-200 bg-white text-rose-700 hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50',
+  ghost:
+    'border border-transparent bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900',
 };
 
 export function ActionButton({
@@ -356,7 +623,7 @@ export function ActionButton({
   return (
     <button
       {...props}
-      className={`min-h-[44px] px-5 sm:px-6 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-150 active:scale-[0.99] disabled:active:scale-100 inline-flex items-center justify-center gap-2 cursor-pointer ${BUTTON_STYLES[variant]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-5 text-[12px] font-semibold transition-[background-color,border-color,color,box-shadow,transform,opacity] duration-150 active:translate-y-px disabled:cursor-not-allowed disabled:active:translate-y-0 sm:px-6 ${BUTTON_STYLES[variant]} ${className}`}
     >
       {children}
     </button>
@@ -400,19 +667,28 @@ export function LogoutButton({
 
 export function AccessRestrictedCard({ role }: { role?: string }) {
   return (
-    <Card className="max-w-md w-full text-center mx-auto my-8 sm:my-12 space-y-4">
-      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
-        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
+    <Card className="mx-auto my-8 w-full max-w-md space-y-5 text-center sm:my-12">
+      <div className="mx-auto flex size-11 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-700">
+        <AlertIcon className="size-5" />
       </div>
+
       <div>
-        <h2 className="text-slate-900 font-bold text-sm sm:text-base">Access Restricted</h2>
-        <p className="text-slate-500 text-xs mt-1.5 leading-relaxed">
-          Your active account role (<span className="font-semibold text-slate-700">{role ? role.replace(/_/g, ' ') : 'Unauthorized'}</span>) does not have permission to view or execute operations on this page.
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-600">
+          Authorization boundary
+        </p>
+        <h2 className="mt-1.5 text-base font-semibold tracking-tight text-slate-950">
+          Access Restricted
+        </h2>
+        <p className="mt-2 text-[12px] leading-5 text-slate-500">
+          Your active account role (
+          <span className="font-semibold text-slate-700">
+            {role ? role.replace(/_/g, ' ') : 'Unauthorized'}
+          </span>
+          ) does not have permission to view or execute operations on this page.
         </p>
       </div>
-      <div className="pt-2 flex justify-center gap-3">
+
+      <div className="flex justify-center border-t border-slate-100 pt-4">
         <LogoutButton variant="danger" />
       </div>
     </Card>
