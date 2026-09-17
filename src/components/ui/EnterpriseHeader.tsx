@@ -62,7 +62,7 @@ export default function EnterpriseHeader({ activeRole: propRole, departmentCode:
 
   // Define workflow routes and permitted roles
   const navigationSteps: NavigationStep[] = [
-    { name: 'Init PR', number: '01A', href: '/dashboard/pr/new', allowedRoles: [Role.Requesting_Office] },
+    { name: 'New Request', number: '01A', href: '/dashboard/pr/new', allowedRoles: [Role.Requesting_Office] },
     { name: 'Track Requests', number: '01B', href: '/dashboard/pr/track', allowedRoles: [Role.Requesting_Office] },
     { name: 'Business Eval', number: '02', href: '/dashboard/pr/evaluate-business', allowedRoles: [Role.Business_Office] },
     { name: 'Admin Sign-Off', number: '03', href: '/dashboard/pr/approve-admin', allowedRoles: [Role.Admin_Office] },

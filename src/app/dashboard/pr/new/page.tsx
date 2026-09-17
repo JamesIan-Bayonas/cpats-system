@@ -1,9 +1,11 @@
 // src/app/dashboard/pr/new/page.tsx
 'use client';
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useTransition } from 'react';
+import { Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Role } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
 
@@ -35,6 +37,12 @@ const ITEM_CATEGORIES = [
   'Other / Custom Item',
 ];
 
+const formatFileSize = (bytes: number | null) => {
+  if (bytes === null) return null;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 export default function NewPurchaseRequestPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -47,7 +55,11 @@ export default function NewPurchaseRequestPage() {
   const [isDirectPoBypass, setIsDirectPoBypass] = useState<boolean>(false);
   const [adminProofFilePath, setAdminProofFilePath] = useState<string>('');
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
+  const [attachedFileSize, setAttachedFileSize] = useState<number | null>(null);
+  const [attachedFileIsImage, setAttachedFileIsImage] = useState(false);
+  const [memoPreviewUrl, setMemoPreviewUrl] = useState<string | null>(null);
   const [uploadingFile, setUploadingFile] = useState<boolean>(false);
+  const memoFileInputRef = useRef<HTMLInputElement>(null);
 
   const [items, setItems] = useState<PurchaseItemState[]>([
     { id: 'item-1', category: 'Monitors & Displays', specs: '', quantity: 1 },
@@ -68,12 +80,39 @@ export default function NewPurchaseRequestPage() {
       .finally(() => setUserLoading(false));
   }, []);
 
+  const clearMemoAttachment = () => {
+    if (memoPreviewUrl) URL.revokeObjectURL(memoPreviewUrl);
+    setAdminProofFilePath('');
+    setAttachedFileName(null);
+    setAttachedFileSize(null);
+    setAttachedFileIsImage(false);
+    setMemoPreviewUrl(null);
+    if (memoFileInputRef.current) memoFileInputRef.current.value = '';
+  };
+
+  useEffect(() => () => {
+    if (memoPreviewUrl) URL.revokeObjectURL(memoPreviewUrl);
+  }, [memoPreviewUrl]);
+
   const handleProofFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const isImage = file.type.startsWith('image/');
+    const isPdf = file.type === 'application/pdf';
+    if (!isImage && !isPdf) {
+      setSystemError('Please choose a PNG, JPG, WEBP, or PDF copy of the signed executive memo.');
+      e.target.value = '';
+      return;
+    }
+
+    setSystemError(null);
+    clearMemoAttachment();
     setUploadingFile(true);
     setAttachedFileName(file.name);
+    setAttachedFileSize(file.size);
+    setAttachedFileIsImage(isImage);
+    if (isImage) setMemoPreviewUrl(URL.createObjectURL(file));
 
     const formData = new FormData();
     formData.append('file', file);
@@ -91,7 +130,7 @@ export default function NewPurchaseRequestPage() {
       }
     } catch (err: unknown) {
       setSystemError(err instanceof Error ? err.message : 'Error uploading memo attachment.');
-      setAttachedFileName(null);
+      clearMemoAttachment();
     } finally {
       setUploadingFile(false);
     }
@@ -495,8 +534,7 @@ export default function NewPurchaseRequestPage() {
                     checked={!isDirectPoBypass}
                     onChange={() => {
                       setIsDirectPoBypass(false);
-                      setAdminProofFilePath('');
-                      setAttachedFileName(null);
+                      clearMemoAttachment();
                     }}
                     className="h-4 w-4 accent-emerald-700 cursor-pointer"
                   />
@@ -532,8 +570,9 @@ export default function NewPurchaseRequestPage() {
                 <p className="text-[11px] text-slate-500 leading-relaxed">
                   For items with a signed executive approval letter already on file.
                 </p>
-                <div className="mt-3 pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[10px] font-semibold text-amber-800">
-                  <span>⚡ Fast-Track Recording Protocol</span>
+                <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                  <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden="true" />
+                  <span>Fast-Track Recording Protocol</span>
                 </div>
               </label>
             </div>
@@ -541,48 +580,92 @@ export default function NewPurchaseRequestPage() {
             {/* Document Uploader */}
             {isDirectPoBypass && (
               <div className="pt-3 border-t border-slate-100 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
                   <label className="block text-xs font-bold text-slate-800">
                     Upload Signed Executive Document <span className="text-rose-600">*</span>
                   </label>
-                  <span className="text-[10px] text-slate-400">PDF, PNG, or JPG</span>
+                  <span className="text-[10px] text-slate-400">PDF, PNG, JPG, or WEBP</span>
                 </div>
 
-                <div className="border-2 border-dashed border-emerald-300 bg-emerald-50/30 hover:border-emerald-500 rounded-xl p-4 text-center transition">
+                <div className="rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/30 p-4 text-center transition hover:border-emerald-500">
+                  <input
+                    ref={memoFileInputRef}
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg,image/webp"
+                    capture="environment"
+                    onChange={handleProofFileUpload}
+                    className="hidden"
+                    id="memo-file-input"
+                  />
                   {attachedFileName || adminProofFilePath ? (
-                    <div className="flex items-center justify-between bg-white border border-emerald-200 rounded-lg p-3">
-                      <div className="flex items-center gap-2.5 overflow-hidden">
-                        <span className="text-lg">📎</span>
-                        <div className="text-left truncate">
-                          <span className="block text-xs font-bold text-slate-900 truncate">
-                            {attachedFileName || 'Executive_Approval_Document.pdf'}
-                          </span>
-                          <span className="block text-[10px] text-emerald-700 font-medium">
-                            Document attached for compliance logging[cite: 1]
-                          </span>
+                    <div className="space-y-3 text-left">
+                      {attachedFileIsImage && memoPreviewUrl ? (
+                        <div className="overflow-hidden rounded-xl border border-emerald-200 bg-white">
+                          <Image
+                            src={memoPreviewUrl}
+                            alt={`Preview of ${attachedFileName || 'the signed executive document'}`}
+                            width={1200}
+                            height={800}
+                            unoptimized
+                            className="max-h-64 w-full bg-slate-50 object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex min-h-28 items-center justify-center rounded-xl border border-emerald-200 bg-white p-4 text-center">
+                          <div>
+                            <span className="block text-2xl" aria-hidden="true">📄</span>
+                            <p className="mt-1 text-xs font-semibold text-slate-700">PDF attached</p>
+                            <p className="mt-0.5 text-[10px] text-slate-500">A visual preview is available for image files.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className="text-lg" aria-hidden="true">{attachedFileIsImage ? '🖼️' : '📎'}</span>
+                          <div className="min-w-0">
+                            <span className="block truncate text-xs font-bold text-slate-900">
+                              {attachedFileName || 'Executive_Approval_Document.pdf'}
+                            </span>
+                            <span className="block text-[10px] font-medium text-emerald-700">
+                              {uploadingFile
+                                ? 'Uploading secure copy…'
+                                : `${attachedFileIsImage ? 'Image preview ready' : 'Document attached'}${formatFileSize(attachedFileSize) ? ` · ${formatFileSize(attachedFileSize)}` : ''}`}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {(memoPreviewUrl || adminProofFilePath) && !uploadingFile && (
+                            <a
+                              href={memoPreviewUrl || adminProofFilePath}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-lg px-2.5 py-2 text-[11px] font-semibold text-emerald-800 transition hover:bg-emerald-50"
+                            >
+                              View full size
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => memoFileInputRef.current?.click()}
+                            disabled={uploadingFile}
+                            className="rounded-lg px-2.5 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Replace
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearMemoAttachment}
+                            disabled={uploadingFile}
+                            className="rounded-lg px-2.5 py-2 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAdminProofFilePath('');
-                          setAttachedFileName(null);
-                        }}
-                        className="text-xs font-semibold text-rose-600 hover:text-rose-800 px-2.5 py-1 hover:bg-rose-50 rounded-md transition cursor-pointer"
-                      >
-                        Change
-                      </button>
                     </div>
                   ) : (
                     <div>
-                      <input
-                        type="file"
-                        accept="application/pdf,image/*"
-                        capture="environment"
-                        onChange={handleProofFileUpload}
-                        className="hidden"
-                        id="memo-file-input"
-                      />
                       <label
                         htmlFor="memo-file-input"
                         className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-xl cursor-pointer transition shadow-2xs active:scale-95"
@@ -590,7 +673,7 @@ export default function NewPurchaseRequestPage() {
                         <span>{uploadingFile ? 'Uploading…' : 'Take Photo or Select File'}</span>
                       </label>
                       <p className="text-[11px] text-slate-500 mt-2">
-                        Attach a photo of the signed document or upload a scanned PDF.
+                        Attach a photo of the signed document to preview it before submission, or upload a scanned PDF.
                       </p>
                     </div>
                   )}

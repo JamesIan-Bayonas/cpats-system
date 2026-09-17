@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useTransition } from 'react';
+import { ClipboardList } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { Role, PRStatus } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
@@ -22,7 +24,7 @@ interface AuditLogNode {
 interface DepartmentPRNode {
   id: string;
   justification: string;
-  itemsPayload?: any;
+  itemsPayload?: unknown;
   status: PRStatus;
   isDirectPoBypass: boolean;
   createdAt: string;
@@ -32,6 +34,48 @@ interface DepartmentPRNode {
     name: string;
   };
   auditLogs?: AuditLogNode[];
+}
+
+// src/app/dashboard/pr/track/page.tsx
+
+function AlertTriangleIcon({ className = 'size-3.5' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
+function HistoryIcon({ className = 'size-3.5' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l4 2" />
+    </svg>
+  );
+}
+
+function FileTextIcon({ className = 'size-3.5' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+    </svg>
+  );
+}
+
+function SearchIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
 }
 
 // ─── Status Badge Mapper ───────────────────────────────────────────────────────
@@ -188,21 +232,21 @@ function AuditTimeline({ logs }: { logs: AuditLogNode[] }) {
   }
 
   return (
-    <ol className="relative border-l-2 border-slate-200 pl-4 space-y-4">
+    <ol className="relative space-y-3 border-l-2 border-slate-200 pl-4 sm:space-y-4">
       {logs.map((log, idx) => {
         const badgeInfo = mapStatusToBadge(log.newState);
         return (
           <li key={idx} className="relative">
             <span className="absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-white bg-[#047857] shadow-sm" />
-            <div className="bg-white border border-slate-100 rounded-xl p-3 space-y-1.5 shadow-sm">
-              <div className="flex items-center justify-between flex-wrap gap-1.5">
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
                 <span
                   className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${badgeInfo.badgeClass}`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${badgeInfo.dotClass}`} />
                   {badgeInfo.label}
                 </span>
-                <span className="text-[10px] font-mono text-slate-400">
+                <time className="font-mono text-[10px] tabular-nums text-slate-400">
                   {new Date(log.createdAt).toLocaleString('en-PH', {
                     month: 'short',
                     day: 'numeric',
@@ -210,18 +254,18 @@ function AuditTimeline({ logs }: { logs: AuditLogNode[] }) {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}
-                </span>
+                </time>
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
                 <span className="font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                   {log.actor.role.replace(/_/g, ' ')}
                 </span>
                 <span className="text-slate-400">·</span>
-                <span>{log.actor.email}</span>
+                <span className="min-w-0 break-all sm:break-normal">{log.actor.email}</span>
               </div>
               {log.remarks && log.remarks.trim().length > 0 && (
-                <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 border border-slate-100 rounded-lg p-2.5 italic">
-                  "{log.remarks}"
+                <p className="break-words rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs italic leading-relaxed text-slate-700 [overflow-wrap:anywhere]">
+                  &ldquo;{log.remarks}&rdquo;
                 </p>
               )}
             </div>
@@ -253,16 +297,22 @@ function StageProgressBar({ status }: { status: PRStatus }) {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-0.5">
+    <div className="relative pt-0.5">
+      <div className="absolute left-[7.14%] right-[7.14%] top-[10px] h-0.5 rounded-full bg-slate-200" />
+      {currentIdx > 0 && (
+        <div
+          className="absolute left-[7.14%] top-[10px] h-0.5 rounded-full bg-[#047857]"
+          style={{ width: `${(currentIdx / (stages.length - 1)) * 85.72}%` }}
+        />
+      )}
+      <ol className="relative grid grid-cols-7">
         {stages.map((stage, idx) => {
           const isComplete = idx < currentIdx;
           const isCurrent = idx === currentIdx;
           return (
-            <React.Fragment key={stage}>
-              <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
+            <li key={stage} className="flex min-w-0 flex-col items-center gap-1.5">
                 <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center text-[8px] font-black transition-all ${
+                  className={`z-10 flex size-5 items-center justify-center rounded-full border-2 text-[8px] font-black ${
                     isComplete
                       ? 'bg-[#047857] border-[#047857] text-white'
                       : isCurrent
@@ -273,7 +323,7 @@ function StageProgressBar({ status }: { status: PRStatus }) {
                   {isComplete ? '✓' : idx + 1}
                 </div>
                 <span
-                  className={`text-[8px] font-semibold text-center truncate max-w-full ${
+                  className={`max-w-full text-center text-[7px] font-semibold leading-tight sm:text-[8px] ${
                     isComplete
                       ? 'text-[#047857]'
                       : isCurrent
@@ -283,18 +333,10 @@ function StageProgressBar({ status }: { status: PRStatus }) {
                 >
                   {stage}
                 </span>
-              </div>
-              {idx < stages.length - 1 && (
-                <div
-                  className={`h-0.5 flex-1 mb-4 rounded-full transition-all ${
-                    idx < currentIdx ? 'bg-[#047857]' : 'bg-slate-200'
-                  }`}
-                />
-              )}
-            </React.Fragment>
+            </li>
           );
         })}
-      </div>
+      </ol>
     </div>
   );
 }
@@ -311,6 +353,8 @@ function InspectionModal({
   const isReturned = node.status === PRStatus.Returned_for_Correction;
   const isDeclined = node.status === PRStatus.Declined;
   const itemTitle = deriveItemSummaryTitle(node.itemsPayload, node.justification);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
 
   const feedbackLog = node.auditLogs?.find(
     (log) =>
@@ -323,37 +367,53 @@ function InspectionModal({
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onDismiss();
+      if (e.key === 'Tab') {
+        const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusable?.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     document.addEventListener('keydown', handleKey);
     document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
     return () => {
       document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = '';
+      previouslyFocused?.focus();
     };
   }, [onDismiss]);
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 font-sans"
+      className="fixed inset-0 z-[100] flex items-stretch justify-center font-sans sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
+      aria-describedby="modal-description"
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-950/65"
         onClick={onDismiss}
         aria-hidden="true"
       />
 
       {/* Modal Panel */}
-      <div className="relative bg-white w-full sm:max-w-xl sm:rounded-2xl rounded-t-3xl shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col overflow-hidden">
+      <section ref={panelRef} className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[min(900px,calc(100dvh-3rem))] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-200">
         
         {/* ─── Modal Header ─── */}
-        <div className="shrink-0 px-5 pt-5 pb-4 border-b border-slate-100">
-          {/* Mobile drag handle */}
-          <div className="w-8 h-1 rounded-full bg-slate-200 mx-auto mb-4 sm:hidden" />
-
+        <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1 min-w-0">
               <h3
@@ -365,11 +425,15 @@ function InspectionModal({
               <p className="text-[10px] sm:text-[11px] font-mono text-slate-400 truncate">
                 {node.id}
               </p>
+              <p id="modal-description" className="sr-only">
+                Procurement stage and official decision history for this requisition.
+              </p>
             </div>
             <button
               type="button"
               onClick={onDismiss}
-              className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center font-bold text-sm transition shrink-0 cursor-pointer"
+              ref={closeButtonRef}
+              className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-xl text-sm font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
               aria-label="Close modal"
             >
               ✕
@@ -378,7 +442,7 @@ function InspectionModal({
         </div>
 
         {/* ─── Scrollable Modal Body ─── */}
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+        <div className="flex-1 touch-pan-y space-y-6 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6">
 
           {/* Evaluator Feedback Alert (Returned / Declined) */}
           {(isReturned || isDeclined) && (
@@ -406,7 +470,7 @@ function InspectionModal({
                 <div className="space-y-2">
                   <div className="bg-white rounded-lg border border-slate-200 p-3">
                     <p className="text-xs text-slate-800 italic leading-relaxed">
-                      "{feedbackLog.remarks || 'No specific note was provided by the evaluator.'}"
+                      &ldquo;{feedbackLog.remarks || 'No specific note was provided by the evaluator.'}&rdquo;
                     </p>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:justify-between text-[10px] text-slate-500 gap-0.5">
@@ -436,8 +500,8 @@ function InspectionModal({
           )}
 
           {/* Requisition Scope Summary */}
-          <div className="bg-[#ECFDF5] border border-emerald-200/70 rounded-xl p-4 space-y-3">
-            <div className="flex items-start justify-between gap-2 flex-wrap pb-2 border-b border-emerald-200/50">
+          <div className="space-y-4 rounded-xl border border-emerald-200/70 bg-[#ECFDF5] p-4 sm:p-5">
+            <div className="flex flex-col items-start gap-3 border-b border-emerald-200/50 pb-3 sm:flex-row sm:justify-between">
               <h4 className="text-sm font-black text-[#064E3B] leading-snug flex-1 min-w-0">
                 {itemTitle}
               </h4>
@@ -454,7 +518,7 @@ function InspectionModal({
                 Operational Justification
               </span>
               <p className="text-xs text-[#064E3B] italic leading-relaxed">
-                "{node.justification}"
+                &ldquo;{node.justification}&rdquo;
               </p>
             </div>
 
@@ -481,7 +545,7 @@ function InspectionModal({
           {/* Procurement Stage Progress */}
           <div className="space-y-2">
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
-              6-Stage Procurement Pipeline
+              7-Stage Procurement Pipeline
             </span>
             <StageProgressBar status={node.status} />
           </div>
@@ -496,17 +560,18 @@ function InspectionModal({
         </div>
 
         {/* ─── Modal Footer ─── */}
-        <div className="shrink-0 px-5 py-4 border-t border-slate-100 bg-slate-50/50">
+        <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:py-4">
           <button
             type="button"
             onClick={onDismiss}
-            className="w-full min-h-[44px] bg-[#064E3B] hover:bg-[#047857] text-white font-bold text-xs rounded-xl transition cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2"
+            className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#064E3B] text-xs font-bold text-white transition hover:bg-[#047857] active:scale-[0.99]"
           >
             Close Viewport
           </button>
         </div>
-      </div>
-    </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 
@@ -577,7 +642,7 @@ function MobileRequisitionCard({
             {itemTitle}
           </h2>
           <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed italic">
-            "{req.justification}"
+            &ldquo;{req.justification}&rdquo;
           </p>
         </div>
 
@@ -586,7 +651,7 @@ function MobileRequisitionCard({
           const log = req.auditLogs.find((l) => l.newState === PRStatus.Returned_for_Correction && l.remarks);
           return log ? (
             <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-[10px] text-orange-900 italic line-clamp-2">
-              ⚠️ "{log.remarks}"
+              ⚠️ &ldquo;{log.remarks}&rdquo;
             </div>
           ) : null;
         })()}
@@ -607,7 +672,7 @@ function MobileRequisitionCard({
         <button
           type="button"
           onClick={() => onInspect(req)}
-          className={`w-full min-h-[44px] rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] border shadow-sm ${
+          className={`w-full min-h-[44px] rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] border shadow-xs ${
             isReturned
               ? 'bg-orange-600 hover:bg-orange-700 text-white border-orange-600'
               : isDeclined
@@ -619,17 +684,17 @@ function MobileRequisitionCard({
         >
           {isReturned ? (
             <>
-              <span>⚠️</span>
+              <AlertTriangleIcon className="size-4 shrink-0" />
               <span>View Required Revision</span>
             </>
           ) : isDeclined ? (
             <>
-              <span>📄</span>
+              <FileTextIcon className="size-4 shrink-0" />
               <span>View Decline Notice</span>
             </>
           ) : (
             <>
-              <span>📜</span>
+              <HistoryIcon className="size-4 shrink-0" />
               <span>View Progress &amp; Audit Trail</span>
             </>
           )}
@@ -694,6 +759,25 @@ export default function RequestTrackingPage() {
   const [activeInspectionNode, setActiveInspectionNode] = useState<DepartmentPRNode | null>(null);
 
   useEffect(() => {
+    const fetchDepartmentRequests = (role: Role, departmentId: string) => {
+      startTransition(async () => {
+        try {
+          const response = await fetch('/api/pr/queue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role, departmentId }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Failed to fetch departmental requests.');
+          setRequests(result.data || []);
+        } catch (err: unknown) {
+          setSystemError(
+            err instanceof Error ? err.message : 'Network interrupt prevented loading requests.'
+          );
+        }
+      });
+    };
+
     fetch('/api/auth/me')
       .then((res) => res.json())
       .then((res) => {
@@ -705,25 +789,6 @@ export default function RequestTrackingPage() {
       .catch(() => setSystemError('Failed to verify session credentials.'))
       .finally(() => setUserLoading(false));
   }, []);
-
-  const fetchDepartmentRequests = (role: Role, departmentId: string) => {
-    startTransition(async () => {
-      try {
-        const response = await fetch('/api/pr/queue', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role, departmentId }),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Failed to fetch departmental requests.');
-        setRequests(result.data || []);
-      } catch (err: unknown) {
-        setSystemError(
-          err instanceof Error ? err.message : 'Network interrupt prevented loading requests.'
-        );
-      }
-    });
-  };
 
   if (userLoading) return <LoadingLedger />;
   if (!activeUser || activeUser.role !== Role.Requesting_Office) return <AccessDenied />;
@@ -846,12 +911,7 @@ export default function RequestTrackingPage() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3.5 sm:p-4 space-y-3">
             {/* Search */}
             <div className="relative">
-              <span
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm select-none"
-                aria-hidden="true"
-              >
-                🔍
-              </span>
+              <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 size-4 select-none pointer-events-none"/>
               <input
                 type="search"
                 value={searchQuery}
@@ -874,37 +934,40 @@ export default function RequestTrackingPage() {
 
             {/* Filter Pills */}
             <div
-              className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar"
-              role="group"
-              aria-label="Status filters"
-            >
-              {[
-                { id: 'ALL', label: `All (${requests.length})` },
-                ...(returnedCount > 0
-                  ? [{ id: 'ACTION_REQUIRED', label: `⚠️ Action Needed (${returnedCount})` }]
-                  : []),
-                { id: 'IN_PROGRESS', label: 'In Progress' },
-                { id: 'CLOSED', label: 'Received & Closed' },
-              ].map((pill) => (
-                <button
-                  key={pill.id}
-                  type="button"
-                  onClick={() => setStatusFilter(pill.id)}
-                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg border text-xs font-semibold transition whitespace-nowrap cursor-pointer shrink-0 ${
-                    statusFilter === pill.id
-                      ? pill.id === 'ACTION_REQUIRED'
-                        ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
-                        : 'bg-[#064E3B] text-white border-[#064E3B] shadow-sm'
-                      : pill.id === 'ACTION_REQUIRED'
-                      ? 'bg-orange-50 text-orange-800 border-orange-200 hover:bg-orange-100'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
-                  aria-pressed={statusFilter === pill.id}
-                >
-                  {pill.label}
-                </button>
-              ))}
-            </div>
+  className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar"
+  role="group"
+  aria-label="Status filters"
+>
+  {[
+    { id: 'ALL', label: `All (${requests.length})` },
+    ...(returnedCount > 0
+      ? [{ id: 'ACTION_REQUIRED', label: `Action Needed (${returnedCount})` }]
+      : []),
+    { id: 'IN_PROGRESS', label: 'In Progress' },
+    { id: 'CLOSED', label: 'Received & Closed' },
+  ].map((pill) => (
+    <button
+      key={pill.id}
+      type="button"
+      onClick={() => setStatusFilter(pill.id)}
+      className={`min-h-[36px] px-3.5 py-1.5 rounded-lg border text-xs font-semibold transition whitespace-nowrap cursor-pointer shrink-0 inline-flex items-center gap-1.5 ${
+        statusFilter === pill.id
+          ? pill.id === 'ACTION_REQUIRED'
+            ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+            : 'bg-[#064E3B] text-white border-[#064E3B] shadow-sm'
+          : pill.id === 'ACTION_REQUIRED'
+          ? 'bg-orange-50 text-orange-800 border-orange-200 hover:bg-orange-100'
+          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+      }`}
+      aria-pressed={statusFilter === pill.id}
+    >
+      {pill.id === 'ACTION_REQUIRED' && (
+        <AlertTriangleIcon className="size-3.5 shrink-0" />
+      )}
+      <span>{pill.label}</span>
+    </button>
+  ))}
+</div>
           </div>
 
           {/* ─── Records / Empty State ───────────────────────────────────────── */}
@@ -915,8 +978,8 @@ export default function RequestTrackingPage() {
             </div>
           ) : filteredRequests.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-14 text-center space-y-4 shadow-sm">
-              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-2xl mx-auto">
-                📋
+              <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mx-auto">
+                <ClipboardList className="w-7 h-7" aria-hidden="true" />
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-bold text-slate-700">
@@ -933,7 +996,7 @@ export default function RequestTrackingPage() {
                   href="/dashboard/pr/new"
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-[#047857] hover:text-[#064E3B] transition mt-1"
                 >
-                  Submit your department's first request →
+                  Submit your department&apos;s first request →
                 </Link>
               )}
               {searchQuery && (
@@ -1045,7 +1108,7 @@ export default function RequestTrackingPage() {
                               className="px-5 py-4 max-w-[200px] text-slate-500 font-medium italic truncate"
                               title={req.justification}
                             >
-                              "{req.justification}"
+                              &ldquo;{req.justification}&rdquo;
                             </td>
 
                             {/* Date */}
@@ -1074,7 +1137,7 @@ export default function RequestTrackingPage() {
                               <button
                                 type="button"
                                 onClick={() => setActiveInspectionNode(req)}
-                                className={`min-h-[36px] px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border shadow-sm active:scale-95 ${
+                                className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border shadow-xs active:scale-95 inline-flex items-center justify-center gap-1.5 ${
                                   isReturned
                                     ? 'bg-orange-600 hover:bg-orange-700 text-white border-orange-600'
                                     : isDeclined
@@ -1084,11 +1147,22 @@ export default function RequestTrackingPage() {
                                     : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                                 }`}
                               >
-                                {isReturned
-                                  ? '⚠️ View Revision'
-                                  : isDeclined
-                                  ? '📄 Decline Notice'
-                                  : '📜 View History'}
+                                {isReturned ? (
+                                  <>
+                                    <AlertTriangleIcon className="size-3.5 shrink-0" />
+                                    <span>View Revision</span>
+                                  </>
+                                ) : isDeclined ? (
+                                  <>
+                                    <FileTextIcon className="size-3.5 shrink-0" />
+                                    <span>Decline Notice</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <HistoryIcon className="size-3.5 shrink-0" />
+                                    <span>View History</span>
+                                  </>
+                                )}
                               </button>
                             </td>
                           </tr>
