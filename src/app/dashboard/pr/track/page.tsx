@@ -745,6 +745,74 @@ function SummaryStatsBar({ requests }: { requests: DepartmentPRNode[] }) {
   );
 }
 
+// ─── Dynamic Empty State ──────────────────────────────────────────────────────
+interface EmptyStateProps {
+  statusFilter: string;
+  searchQuery: string;
+  totalCount: number;
+  onReset: () => void;
+}
+
+function RequisitionEmptyState({
+  statusFilter,
+  searchQuery,
+  totalCount,
+  onReset,
+}: EmptyStateProps) {
+  const isFiltered = totalCount > 0;
+
+  const getFilteredMessage = () => {
+    if (searchQuery) {
+      return `No requisitions matched "${searchQuery}". Try checking your spelling or clearing search.`;
+    }
+    switch (statusFilter) {
+      case 'ACTION_REQUIRED':
+        return 'There are no requisitions currently returned for correction.';
+      case 'IN_PROGRESS':
+        return 'There are currently no requisitions undergoing review or purchasing.';
+      case 'CLOSED':
+        return 'No requisitions have been marked as completed and closed yet.';
+      default:
+        return 'No requisitions match the selected criteria.';
+    }
+  };
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl py-14 px-4 text-center shadow-sm">
+      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mx-auto mb-3.5">
+        <ClipboardList className="w-6 h-6 stroke-[1.75]" aria-hidden="true" />
+      </div>
+
+      <h3 className="text-sm font-bold text-slate-800">
+        {isFiltered ? 'No requisitions match this criteria' : 'No purchase requests on file'}
+      </h3>
+
+      <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto leading-normal">
+        {isFiltered
+          ? getFilteredMessage()
+          : 'Your department has not submitted any purchase requests yet.'}
+      </p>
+
+      {!isFiltered ? (
+        <Link
+          href="/dashboard/pr/new"
+          className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-[#047857] hover:text-[#064E3B] transition"
+        >
+          Submit your department&apos;s first request &rarr;
+        </Link>
+      ) : (
+        <button
+          type="button"
+          onClick={onReset}
+          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 transition cursor-pointer"
+        >
+          Reset filters &amp; search
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page Component ───────────────────────────────────────────────────────
 export default function RequestTrackingPage() {
   const [isPending, startTransition] = useTransition();
@@ -815,7 +883,7 @@ export default function RequestTrackingPage() {
       );
     if (statusFilter === 'CLOSED')
       return matchesSearch && req.status === PRStatus.Received_and_Closed;
-    return matchesSearch;
+    return matchesSearch; 
   });
 
   const returnedCount = requests.filter((r) => r.status === PRStatus.Returned_for_Correction).length;
@@ -831,16 +899,15 @@ export default function RequestTrackingPage() {
           {/* ─── Page Header ────────────────────────────────────────────────── */}
           <header className="space-y-3">
             {/* Breadcrumb */}
-            <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-400 font-medium">
-              <Link href="/dashboard" className="hover:text-[#047857] transition text-slate-500">
+            {/* After */}
+            <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-slate-500 font-medium">
+              <Link href="/dashboard" className="hover:text-emerald-700 transition">
                 Portal
               </Link>
-              <span className="text-slate-300">/</span>
-              <Link href="/dashboard/pr" className="hover:text-[#047857] transition text-slate-500">
-                Purchase Requests
-              </Link>
-              <span className="text-slate-300">/</span>
-              <span className="text-slate-700 font-semibold">Track</span>
+              <span>/</span>
+              <span className="text-slate-800 font-semibold truncate">
+                Department Requests
+              </span>
             </nav>
 
             {/* Title Area */}
@@ -977,38 +1044,15 @@ export default function RequestTrackingPage() {
               <span className="text-xs font-medium">Refreshing ledger…</span>
             </div>
           ) : filteredRequests.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-14 text-center space-y-4 shadow-sm">
-              <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mx-auto">
-                <ClipboardList className="w-7 h-7" aria-hidden="true" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-slate-700">
-                  No requisitions match your criteria
-                </p>
-                <p className="text-xs text-slate-400">
-                  {searchQuery
-                    ? 'Try adjusting your search query or clearing filters.'
-                    : 'Your department has no purchase requests on file yet.'}
-                </p>
-              </div>
-              {!searchQuery && (
-                <Link
-                  href="/dashboard/pr/new"
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#047857] hover:text-[#064E3B] transition mt-1"
-                >
-                  Submit your department&apos;s first request →
-                </Link>
-              )}
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => { setSearchQuery(''); setStatusFilter('ALL'); }}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 transition cursor-pointer"
-                >
-                  Reset all filters
-                </button>
-              )}
-            </div>
+            <RequisitionEmptyState
+              statusFilter={statusFilter}
+              searchQuery={searchQuery}
+              totalCount={requests.length}
+              onReset={() => {
+                setSearchQuery('');
+                setStatusFilter('ALL');
+              }}
+            />
           ) : (
             <>
               {/* ═══════════════════════════════════════════════════════════════ */}

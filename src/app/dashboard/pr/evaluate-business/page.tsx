@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useTransition } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { PRStatus, Role } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
@@ -38,6 +39,42 @@ const Icon = ({ path, className = 'h-4 w-4' }: { path: string; className?: strin
   </svg>
 );
 
+function OperationStateModal({ onReviewLatest }: { onReviewLatest: () => void }) {
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 font-sans" role="dialog" aria-modal="true" aria-labelledby="operation-state-title" aria-describedby="operation-state-description">
+      <div className="absolute inset-0 bg-slate-950/65" aria-hidden="true" />
+      <section className="relative w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl">
+        <div className="border-b border-amber-100 bg-amber-50 px-5 py-4 sm:px-6">
+          <div className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-white text-amber-700">
+              <Icon className="size-5" path="M12 8v4.5M12 16.5h.01M12 3.5 21 20H3L12 3.5Z" />
+            </span>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[.16em] text-amber-700">Evaluation not recorded</p>
+              <h2 id="operation-state-title" className="mt-1 text-base font-semibold text-slate-950">This requisition is no longer awaiting review</h2>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-4 px-5 py-5 sm:px-6">
+          <p id="operation-state-description" className="text-sm leading-6 text-slate-600">
+            The Requesting Office has already been asked to correct this requisition. Your decision was not saved, and the record cannot receive another Business Office evaluation until it returns to the active review queue.
+          </p>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs leading-5 text-slate-600">
+            Review the current status in Decision history before continuing with another requisition.
+          </div>
+        </div>
+        <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
+          <button type="button" onClick={onReviewLatest} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-emerald-800 px-4 text-xs font-semibold text-white transition hover:bg-emerald-900">
+            <Icon className="size-4 shrink-0" path="M5 12h14M13 6l6 6-6 6" />
+            <span>Review decision history</span>
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
 export default function BusinessOfficeEvaluationPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -55,6 +92,7 @@ export default function BusinessOfficeEvaluationPage() {
   const [systemError, setSystemError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ZodFormErrors | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showOperationStateModal, setShowOperationStateModal] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/me').then((res) => res.json()).then((res) => {
@@ -72,7 +110,7 @@ export default function BusinessOfficeEvaluationPage() {
   };
 
   const handleEvaluationSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setSystemError(null); setFieldErrors(null); setSuccessMessage(null);
+    e.preventDefault(); setSystemError(null); setFieldErrors(null); setSuccessMessage(null); setShowOperationStateModal(false);
     if (!activeUser || activeUser.role !== Role.Business_Office) { setSystemError('Only Business Office personnel can evaluate Purchase Requests.'); return; }
     if (!necessityVerified || !budgetAvailable) { setSystemError('Please confirm both verification checks before recording your decision.'); return; }
     if (!evaluationAction) { setSystemError('Please select an evaluation action (Approve, Return for Correction, or Decline).'); return; }
@@ -88,7 +126,13 @@ export default function BusinessOfficeEvaluationPage() {
         const result = await response.json();
         if (!response.ok) {
           if (response.status === 422 && result.errors) { setFieldErrors(result.errors); throw new Error('Please review highlighted fields.'); }
-          throw new Error(result.error || 'A transaction exception occurred while recording your decision.');
+          const errorMessage = result.error || 'A transaction exception occurred while recording your decision.';
+          if (/INVALID OPERATION STATE|currently in .* status|Returned_for_Correction/i.test(errorMessage)) {
+            setShowOperationStateModal(true);
+            await syncWorkspaceQueue(activeUser.role);
+            return;
+          }
+          throw new Error(errorMessage);
         }
         setSuccessMessage('Evaluation committed successfully. Request status updated.');
         setTargetPrId(''); setEvaluationAction(''); setRemarks(''); setNecessityVerified(false); setBudgetAvailable(false);
@@ -118,6 +162,16 @@ export default function BusinessOfficeEvaluationPage() {
   const calculatedGrandTotal = itemsList.reduce((acc, item) => acc + (item.unitPrice || 0) * item.quantity, 0);
   const adminAuditFeedback = selectedPR?.auditLogs?.find((log) => log.actor.role === Role.Admin_Office || log.remarks);
   const checksComplete = Number(necessityVerified) + Number(budgetAvailable);
+
+  const reviewLatestDecisionHistory = () => {
+    setShowOperationStateModal(false);
+    setPrimarySegment('DECISION_HISTORY');
+    setTargetPrId('');
+    setEvaluationAction('');
+    setRemarks('');
+    setNecessityVerified(false);
+    setBudgetAvailable(false);
+  };
 
   return <PageShell>
     <StageHeader eyebrow="Step 2 of 6 · Business Office Evaluation" title="Fiscal Evaluation"
@@ -194,5 +248,6 @@ export default function BusinessOfficeEvaluationPage() {
         </>}
       </form>
     </ReviewWorkspace>
+    {showOperationStateModal && <OperationStateModal onReviewLatest={reviewLatestDecisionHistory} />}
   </PageShell>;
 }

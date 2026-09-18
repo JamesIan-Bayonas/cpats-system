@@ -42,6 +42,18 @@ interface RequisitionReportNode {
   auditLogs: AuditLogEntry[];
 }
 
+function QrCodeIcon({ className = 'size-3.5 shrink-0' }: { className?: string }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM14 14h2v2h-2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function CameraIcon({ className = 'size-3.5 shrink-0' }: { className?: string }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="M4.5 8.5h3l1.3-2h6.4l1.3 2h3a1.8 1.8 0 0 1 1.8 1.8v7.2a1.8 1.8 0 0 1-1.8 1.8h-15A1.8 1.8 0 0 1 2.7 17.5v-7.2a1.8 1.8 0 0 1 1.8-1.8Z" strokeLinejoin="round" /><circle cx="12" cy="14" r="3" /></svg>;
+}
+
+function XIcon({ className = 'size-4 shrink-0' }: { className?: string }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" /></svg>;
+}
+
 export default function GlobalAuditorConsolePage() {
   const [isPending, startTransition] = useTransition();
 
@@ -305,7 +317,10 @@ export default function GlobalAuditorConsolePage() {
                                   }
                                   className="text-[9px] font-mono font-bold text-slate-600 bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 px-1.5 py-0.5 rounded border border-slate-200 transition cursor-pointer"
                                 >
-                                  🔳 View QR Token
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <QrCodeIcon className="size-3.5 shrink-0" />
+                                    <span>View QR Token</span>
+                                  </span>
                                 </button>
                               )}
                             </div>
@@ -328,7 +343,10 @@ export default function GlobalAuditorConsolePage() {
                             }}
                             className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-md border border-emerald-200 transition cursor-pointer"
                           >
-                            📷 View Photo
+                            <span className="inline-flex items-center gap-1.5">
+                              <CameraIcon className="size-3.5 shrink-0" />
+                              <span>View Photo</span>
+                            </span>
                           </button>
                         ) : (
                           <span className="text-slate-400 italic text-[10px]">No Photo</span>
@@ -378,8 +396,9 @@ export default function GlobalAuditorConsolePage() {
               <button
                 onClick={() => setActiveMediaModal(null)}
                 className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer"
+                aria-label="Close media preview"
               >
-                ✕
+                <XIcon className="size-4 shrink-0" />
               </button>
             </div>
 

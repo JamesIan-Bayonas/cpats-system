@@ -40,6 +40,14 @@ interface ApprovedPRQueueNode {
   department: { code: string; name: string };
 }
 
+function PrintIcon({ className = 'size-4 shrink-0' }: { className?: string }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="M7 9V4h10v5M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function SparkIcon({ className = 'size-4 shrink-0' }: { className?: string }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="m13 2-8 12h6l-1 8 9-13h-6l0-7Z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
 export default function NewPurchaseOrderPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -221,9 +229,12 @@ export default function NewPurchaseOrderPage() {
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase px-4 py-2 rounded-lg transition cursor-pointer active:scale-95 shadow-sm inline-flex items-center gap-2"
-                >
-                  <span>🖨</span> Print Official Asset Tag Sticker
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase px-4 py-2 rounded-lg transition cursor-pointer active:scale-95 shadow-sm inline-flex items-center gap-2"
+              >
+                  <span className="inline-flex items-center gap-1.5">
+                    <PrintIcon className="size-4 shrink-0" />
+                    <span>Print Official Asset Tag Sticker</span>
+                  </span>
                 </button>
               </div>
             </div>
@@ -267,7 +278,10 @@ export default function NewPurchaseOrderPage() {
                 onClick={handleGeneratePoNumber}
                 className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
               >
-                ⚡ Auto-Format PO Number
+                <span className="inline-flex items-center gap-1.5">
+                  <SparkIcon className="size-3.5 shrink-0" />
+                  <span>Auto-Format PO Number</span>
+                </span>
               </button>
             </div>
             <input

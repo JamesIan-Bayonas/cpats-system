@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useTransition } from 'react';
-import { Zap } from 'lucide-react';
+import { Zap, ImageIcon, FileText, Paperclip } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -507,75 +507,87 @@ export default function NewPurchaseRequestPage() {
           </div>
 
           {/* 3. Requisition Protocol */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-6 shadow-2xs space-y-4">
-            <div>
-              <h2 className="text-xs sm:text-sm font-bold text-slate-900">
-                3. Requisition Protocol
-              </h2>
-              <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-                Select your authorization pathway.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Option A: Standard */}
-              <label
-                className={`flex flex-col p-3.5 sm:p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 ${
-                  !isDirectPoBypass
-                    ? 'border-emerald-700 bg-emerald-50/40 shadow-xs'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-900">Standard Department Requisition</span>
-                  <input
-                    type="radio"
-                    name="filingProtocol"
-                    checked={!isDirectPoBypass}
-                    onChange={() => {
-                      setIsDirectPoBypass(false);
-                      clearMemoAttachment();
-                    }}
-                    className="h-4 w-4 accent-emerald-700 cursor-pointer"
-                  />
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Sequentially reviewed by the Business Office and Administration before PO creation.
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-6 shadow-2xs space-y-4">
+              <div>
+                <h2 className="text-xs sm:text-sm font-bold text-slate-900">
+                  3. Requisition Protocol
+                </h2>
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+                  Select your authorization pathway.
                 </p>
-                <div className="mt-3 pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-800">
-                  <span>● Standard Sequential Review</span>
-                </div>
-              </label>
+              </div>
 
-              {/* Option B: Pre-Approved Letter */}
-              <label
-                className={`flex flex-col p-3.5 sm:p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 ${
-                  isDirectPoBypass
-                    ? 'border-emerald-700 bg-emerald-50/40 shadow-xs'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-900">
-                    Executive Pre-Approved Memo
-                  </span>
-                  <input
-                    type="radio"
-                    name="filingProtocol"
-                    checked={isDirectPoBypass}
-                    onChange={() => setIsDirectPoBypass(true)}
-                    className="h-4 w-4 accent-emerald-700 cursor-pointer"
-                  />
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  For items with a signed executive approval letter already on file.
-                </p>
-                <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
-                  <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden="true" />
-                  <span>Fast-Track Recording Protocol</span>
-                </div>
-              </label>
-            </div>
+              {/* --- INSERT THIS BLOCK --- */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Standard Department Requisition */}
+                <label
+                  className={`relative flex flex-col justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 ${
+                    !isDirectPoBypass
+                      ? 'border-emerald-700 bg-emerald-50/30 shadow-xs'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="block font-bold text-slate-900 text-xs sm:text-sm">
+                        Standard Department Requisition
+                      </span>
+                      <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
+                        Sequentially reviewed by the Business Office and Administration before PO creation.
+                      </p>
+                    </div>
+                    <input
+                      type="radio"
+                      name="filingProtocol"
+                      value="standard"
+                      checked={!isDirectPoBypass}
+                      onChange={() => {
+                        setIsDirectPoBypass(false);
+                        clearMemoAttachment();
+                      }}
+                      className="h-4 w-4 accent-emerald-700 cursor-pointer shrink-0 mt-0.5"
+                    />
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
+                    <span>Standard Sequential Review</span>
+                  </div>
+                </label>
+
+                {/* Executive Pre-Approved Memo */}
+                <label
+                  className={`relative flex flex-col justify-between p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 ${
+                    isDirectPoBypass
+                      ? 'border-emerald-700 bg-emerald-50/30 shadow-xs'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="block font-bold text-slate-900 text-xs sm:text-sm">
+                        Executive Pre-Approved Memo
+                      </span>
+                      <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
+                        For items with a signed executive approval letter already on file.
+                      </p>
+                    </div>
+                    <input
+                      type="radio"
+                      name="filingProtocol"
+                      value="bypass"
+                      checked={isDirectPoBypass}
+                      onChange={() => setIsDirectPoBypass(true)}
+                      className="h-4 w-4 accent-emerald-700 cursor-pointer shrink-0 mt-0.5"
+                    />
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5 text-[10px] font-semibold text-amber-700">
+                    <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" aria-hidden="true" />
+                    <span>Fast-Track Recording Protocol</span>
+                  </div>
+                </label>
+              </div>
 
             {/* Document Uploader */}
             {isDirectPoBypass && (
@@ -599,30 +611,42 @@ export default function NewPurchaseRequestPage() {
                   />
                   {attachedFileName || adminProofFilePath ? (
                     <div className="space-y-3 text-left">
+                      {/* Visual Preview Frame */}
                       {attachedFileIsImage && memoPreviewUrl ? (
-                        <div className="overflow-hidden rounded-xl border border-emerald-200 bg-white">
+                        <div className="relative overflow-hidden rounded-xl border border-emerald-200/80 bg-slate-900/5 flex items-center justify-center p-2">
                           <Image
                             src={memoPreviewUrl}
                             alt={`Preview of ${attachedFileName || 'the signed executive document'}`}
                             width={1200}
                             height={800}
                             unoptimized
-                            className="max-h-64 w-full bg-slate-50 object-contain"
+                            className="max-h-72 w-auto max-w-full rounded-lg object-contain shadow-xs"
                           />
                         </div>
                       ) : (
-                        <div className="flex min-h-28 items-center justify-center rounded-xl border border-emerald-200 bg-white p-4 text-center">
-                          <div>
-                            <span className="block text-2xl" aria-hidden="true">📄</span>
-                            <p className="mt-1 text-xs font-semibold text-slate-700">PDF attached</p>
-                            <p className="mt-0.5 text-[10px] text-slate-500">A visual preview is available for image files.</p>
+                        <div className="flex min-h-28 items-center justify-center rounded-xl border border-emerald-200/80 bg-white p-4 text-center">
+                          <div className="flex flex-col items-center">
+                            <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center mb-1.5">
+                              <FileText className="w-5 h-5 stroke-[1.75]" aria-hidden="true" />
+                            </div>
+                            <p className="text-xs font-bold text-slate-700">PDF Document Attached</p>
+                            <p className="mt-0.5 text-[10px] text-slate-500">
+                              A visual inline preview is available for image uploads.
+                            </p>
                           </div>
                         </div>
                       )}
 
-                      <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <span className="text-lg" aria-hidden="true">{attachedFileIsImage ? '🖼️' : '📎'}</span>
+                      {/* File Metadata & Actions Bar */}
+                      <div className="flex flex-col gap-3 rounded-xl border border-emerald-200/90 bg-white p-3 sm:flex-row sm:items-center sm:justify-between shadow-2xs">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200/70 text-emerald-700 flex items-center justify-center shrink-0">
+                            {attachedFileIsImage ? (
+                              <ImageIcon className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+                            ) : (
+                              <FileText className="w-4 h-4 stroke-[2]" aria-hidden="true" />
+                            )}
+                          </div>
                           <div className="min-w-0">
                             <span className="block truncate text-xs font-bold text-slate-900">
                               {attachedFileName || 'Executive_Approval_Document.pdf'}
@@ -630,17 +654,20 @@ export default function NewPurchaseRequestPage() {
                             <span className="block text-[10px] font-medium text-emerald-700">
                               {uploadingFile
                                 ? 'Uploading secure copy…'
-                                : `${attachedFileIsImage ? 'Image preview ready' : 'Document attached'}${formatFileSize(attachedFileSize) ? ` · ${formatFileSize(attachedFileSize)}` : ''}`}
+                                : `${attachedFileIsImage ? 'Image preview ready' : 'Document attached'}${
+                                    formatFileSize(attachedFileSize) ? ` · ${formatFileSize(attachedFileSize)}` : ''
+                                  }`}
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
+
+                        <div className="flex items-center gap-1.5 shrink-0">
                           {(memoPreviewUrl || adminProofFilePath) && !uploadingFile && (
                             <a
                               href={memoPreviewUrl || adminProofFilePath}
                               target="_blank"
                               rel="noreferrer"
-                              className="rounded-lg px-2.5 py-2 text-[11px] font-semibold text-emerald-800 transition hover:bg-emerald-50"
+                              className="rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 transition hover:bg-emerald-50"
                             >
                               View full size
                             </a>
@@ -649,7 +676,7 @@ export default function NewPurchaseRequestPage() {
                             type="button"
                             onClick={() => memoFileInputRef.current?.click()}
                             disabled={uploadingFile}
-                            className="rounded-lg px-2.5 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                           >
                             Replace
                           </button>
@@ -657,7 +684,7 @@ export default function NewPurchaseRequestPage() {
                             type="button"
                             onClick={clearMemoAttachment}
                             disabled={uploadingFile}
-                            className="rounded-lg px-2.5 py-2 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                           >
                             Remove
                           </button>

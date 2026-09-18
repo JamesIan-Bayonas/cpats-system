@@ -46,6 +46,36 @@ interface PendingPOQueueNode {
   };
 }
 
+type IconProps = { className?: string };
+
+function QrScanIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM14 14h2v2h-2z" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function ReceiptIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="M7 3h10v18l-2.5-1.5L12 21l-2.5-1.5L7 21V3Z" strokeLinejoin="round" /><path d="M10 8h4M10 12h4M10 16h2" strokeLinecap="round" /></svg>;
+}
+
+function FolderUpIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="M3.5 7.5h6l1.8 2H20.5v8.8A2.2 2.2 0 0 1 18.3 20.5H5.7a2.2 2.2 0 0 1-2.2-2.2V7.5Z" strokeLinejoin="round" /><path d="m12 16 0-6m0 0-2.5 2.5M12 10l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function CameraIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="M4.5 8.5h3l1.3-2h6.4l1.3 2h3a1.8 1.8 0 0 1 1.8 1.8v7.2a1.8 1.8 0 0 1-1.8 1.8h-15A1.8 1.8 0 0 1 2.7 17.5v-7.2a1.8 1.8 0 0 1 1.8-1.8Z" strokeLinejoin="round" /><circle cx="12" cy="14" r="3" /></svg>;
+}
+
+function CheckIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}><path d="m5 12.5 4.2 4.2L19 7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function XIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" /></svg>;
+}
+
+function VideoOffIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}><path d="M3 7.5h10.5A2.5 2.5 0 0 1 16 10v4a2.5 2.5 0 0 1-2.5 2.5H3V7.5ZM16 10l4-2v8l-4-2" strokeLinecap="round" strokeLinejoin="round" /><path d="m4 4 16 16" strokeLinecap="round" /></svg>;
+}
+
 export default function ReceivingCustodianPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -411,7 +441,10 @@ export default function ReceivingCustodianPage() {
               }}
               className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
             >
-              <span>🔳 Open WebRTC QR Scanner</span>
+              <span className="inline-flex items-center gap-1.5">
+                <QrScanIcon className="size-4 shrink-0" />
+                <span>Open WebRTC QR Scanner</span>
+              </span>
             </button>
           </div>
 
@@ -440,7 +473,7 @@ export default function ReceivingCustodianPage() {
                 {invoiceFileName || invoiceFilePath ? (
                   <div className="flex flex-col h-full justify-between">
                     <div className="flex items-center space-x-3 overflow-hidden bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                      <span className="text-xl shrink-0">🧾</span>
+                      <ReceiptIcon className="size-5 shrink-0 text-emerald-700" />
                       <div className="truncate">
                         <span className="block text-xs font-bold text-emerald-900 truncate">
                           {invoiceFileName || 'Invoice Document Attached'}
@@ -471,8 +504,10 @@ export default function ReceivingCustodianPage() {
                       htmlFor="invoice-file-input"
                       className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-2xs active:scale-95"
                     >
-                      <span>📁</span>
-                      <span>Upload Invoice</span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <FolderUpIcon className="size-4 shrink-0" />
+                        <span>Upload Invoice</span>
+                      </span>
                     </label>
                     <p className="text-[10px] text-slate-400">
                       Scan or photo of delivery receipt
@@ -505,7 +540,10 @@ export default function ReceivingCustodianPage() {
                       }}
                       className="absolute inset-0 bg-slate-900/60 text-white text-xs font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
                     >
-                      ✕ Remove Photo
+                      <span className="inline-flex items-center gap-1.5">
+                        <XIcon className="size-4 shrink-0" />
+                        <span>Remove Photo</span>
+                      </span>
                     </button>
                   </div>
                 ) : (
@@ -522,8 +560,10 @@ export default function ReceivingCustodianPage() {
                       htmlFor="hardware-photo-input"
                       className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-2xs active:scale-95"
                     >
-                      <span>📷</span>
-                      <span>Capture Photo</span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <CameraIcon className="size-4 shrink-0" />
+                        <span>Capture Photo</span>
+                      </span>
                     </label>
                     <p className="text-[10px] text-slate-400">
                       Proof of physical equipment condition
@@ -573,7 +613,10 @@ export default function ReceivingCustodianPage() {
                     : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                ✓ Good Condition
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckIcon className="size-4 shrink-0" />
+                  <span>Good Condition</span>
+                </span>
               </button>
               <button
                 type="button"
@@ -584,7 +627,10 @@ export default function ReceivingCustodianPage() {
                     : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                ✕ Damaged Cargo
+                <span className="inline-flex items-center gap-1.5">
+                  <XIcon className="size-4 shrink-0" />
+                  <span>Damaged Cargo</span>
+                </span>
               </button>
             </div>
             {fieldErrors?.condition?._errors && <FieldError>{fieldErrors.condition._errors[0]}</FieldError>}
@@ -629,8 +675,9 @@ export default function ReceivingCustodianPage() {
                   setQrScanStatus(null);
                 }}
                 className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer"
+                aria-label="Close scanner terminal"
               >
-                ✕
+                <XIcon className="size-4 shrink-0" />
               </button>
             </div>
 
@@ -644,7 +691,10 @@ export default function ReceivingCustodianPage() {
               />
               {!isCameraActive && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-slate-900/80 text-slate-400 text-xs">
-                  <span>📷 Live Viewport Offline</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <VideoOffIcon className="size-4 shrink-0" />
+                    <span>Live Viewport Offline</span>
+                  </span>
                   <span className="text-[10px] mt-1 text-slate-500">Camera stream stopped or permissions blocked</span>
                 </div>
               )}

@@ -1,17 +1,95 @@
-// File: src/app/login/page.tsx
 'use client';
 
-import React, { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
+import {
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  HelpCircle,
+  LockKeyhole,
+  ShieldCheck,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react';
 
 const DEMO_PROFILES = [
-  { role: 'Requesting_Office', email: 'requester@dmc.edu.ph', label: 'Requester (CCS)' },
-  { role: 'Business_Office', email: 'finance@dmc.edu.ph', label: 'Finance Evaluator' },
-  { role: 'Admin_Office', email: 'vp-admin@dmc.edu.ph', label: 'VP Administration' },
-  { role: 'Purchasing_Office', email: 'purchasing@dmc.edu.ph', label: 'Purchasing Officer' },
-  { role: 'Receiving_Custodian', email: 'custodian@dmc.edu.ph', label: 'Asset Custodian' },
-  { role: 'Global_Auditor', email: 'auditor@dmc.edu.ph', label: 'Global Auditor' },
+  { email: 'requester@dmc.edu.ph', label: 'Requester (CCS)' },
+  { email: 'finance@dmc.edu.ph', label: 'Finance Evaluator' },
+  { email: 'vp-admin@dmc.edu.ph', label: 'VP Administration' },
+  { email: 'purchasing@dmc.edu.ph', label: 'Purchasing Officer' },
+  { email: 'custodian@dmc.edu.ph', label: 'Asset Custodian' },
+  { email: 'auditor@dmc.edu.ph', label: 'Global Auditor' },
 ];
+
+const WORKFLOW_HANDOFFS = [
+  { office: 'Requesting office', responsibility: 'Prepares the requisition' },
+  { office: 'Business and administration', responsibility: 'Reviews and authorizes' },
+  { office: 'Purchasing and receiving', responsibility: 'Fulfills and records delivery' },
+  { office: 'Institutional audit', responsibility: 'Verifies the complete record' },
+];
+
+function BrandMark({ inverse = false }: { inverse?: boolean }) {
+  return (
+    <div className="inline-flex min-w-0 items-center gap-3">
+      <div className="relative size-12 shrink-0 bg-white p-1 shadow-[0_0_0_1px_rgba(6,61,45,.12)] sm:size-14">
+        <Image
+          src="/dmc-logo.png"
+          alt="DMC College Foundation, Inc. seal"
+          fill
+          sizes="56px"
+          className="object-contain p-1"
+          priority
+        />
+      </div>
+      <div className="min-w-0">
+        <p className={`truncate text-sm font-semibold tracking-[-0.02em] sm:text-base ${inverse ? 'text-white' : 'text-[#17221e]'}`}>
+          DMC College Foundation, Inc.
+        </p>
+        <p className={`mt-0.5 truncate text-[11px] sm:text-xs ${inverse ? 'text-[#9bc9ae]' : 'text-[#507064]'}`}>
+          Campus Procurement Automation &amp; Tracking System
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Dialog({
+  children,
+  label,
+  onClose,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-[#063d2d]/70 p-4 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onClose();
+      }}
+    >
+      <div className="w-full max-w-md border border-[#cbd8d1] bg-white shadow-[0_24px_80px_rgba(2,44,34,.28)]">
+        <div className="flex items-start justify-between gap-5 border-b border-[#cbd8d1] px-6 py-5">
+          <div className="min-w-0">{children}</div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid size-9 shrink-0 place-items-center text-[#507064] transition-colors hover:bg-[#edf5f0] hover:text-[#063d2d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#087443]"
+            aria-label={`Close ${label}`}
+          >
+            <X className="size-4 shrink-0" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function InstitutionalLoginPage() {
   const router = useRouter();
@@ -19,14 +97,13 @@ export default function InstitutionalLoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  
-  // Modal states
+  const [showPassword, setShowPassword] = useState(false);
   const [showDevProfiles, setShowDevProfiles] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
     setLoading(true);
     setErrorMessage(null);
 
@@ -36,17 +113,20 @@ export default function InstitutionalLoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Authentication failed. Please verify credentials.');
+        throw new Error(result.error || 'Authentication failed. Check your email and password.');
       }
 
       router.push('/dashboard');
       router.refresh();
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Identity verification failed. Please check your credentials.');
+    } catch (error: unknown) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'We could not verify this account. Check your email and password.',
+      );
     } finally {
       setLoading(false);
     }
@@ -55,354 +135,231 @@ export default function InstitutionalLoginPage() {
   const applyDemoProfile = (profileEmail: string) => {
     setEmail(profileEmail);
     setPassword('Password123!');
+    setErrorMessage(null);
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-[#F9FAFB] font-sans antialiased text-slate-900 selection:bg-emerald-100 selection:text-emerald-900">
-      
-      {/* ========================================================================= */}
-      {/* LEFT PANEL: Deep Forest Institutional Gateway Sidebar                    */}
-      {/* ========================================================================= */}
-      <div className="hidden lg:flex lg:w-[45%] bg-[#0B2B18] p-10 xl:p-14 text-white flex-col justify-between relative border-r border-emerald-950/80">
-        
-        {/* Subtle Geometric Background Pattern (2% Opacity Grid Lines) */}
-        <div 
-          className="absolute inset-0 opacity-[0.03] pointer-events-none"
-          style={{
-            backgroundImage: `radial-gradient(#FFFFFF 1px, transparent 1px)`,
-            backgroundSize: '24px 24px'
-          }}
-        />
+    <main className="min-h-[100svh] bg-[#f4f8f5] text-[#17221e] selection:bg-[#9bc9ae] selection:text-[#063d2d] xl:grid xl:grid-cols-[minmax(0,1.12fr)_minmax(520px,.88fr)]">
+      <section className="relative hidden min-h-[100svh] overflow-hidden bg-[#063d2d] px-[clamp(3rem,5vw,6.5rem)] py-12 text-white xl:flex xl:flex-col">
+        <header className="relative z-10">
+          <BrandMark inverse />
+        </header>
 
-        {/* 1. Header: Institutional Seal & Entity Name */}
-        <div className="relative z-10 flex items-center space-x-3.5">
-          <div className="h-10 w-10 rounded-lg bg-emerald-700/80 border border-emerald-500/40 flex items-center justify-center font-black text-sm tracking-tight text-white shadow-sm">
-            DMC
-          </div>
-          <div>
-            <h2 className="text-xs font-bold tracking-wider uppercase text-emerald-300">
-              DMC College Foundation Inc.
-            </h2>
-            <p className="text-[11px] text-emerald-100/60 font-medium">
-              Dipolog City, Zamboanga del Norte
-            </p>
-          </div>
-        </div>
-
-        {/* 2. Body: System Identification & Operational Status */}
-        <div className="relative z-10 my-auto space-y-6 max-w-lg">
-          
-          {/* Status Badge */}
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#163824] border border-emerald-600/30 text-emerald-300 text-[11px] font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>System State: Operational • TLS 1.3 Secure</span>
-          </div>
-
-          {/* System Name */}
-          <div>
-            <h1 className="text-2xl xl:text-3xl font-extrabold tracking-tight leading-snug text-white">
-              Internal Procurement Management System
+        <div className="relative z-10 my-auto grid grid-cols-[minmax(0,1fr)_minmax(260px,.72fr)] items-center gap-[clamp(3rem,6vw,7rem)] py-14">
+          <div className="max-w-xl">
+            <h1 className="text-[clamp(3.35rem,4.6vw,5.8rem)] font-semibold leading-[0.94] tracking-[-0.065em] text-white">
+              Every request carries its history with it.
             </h1>
-            <p className="text-xs text-emerald-100/70 mt-2 leading-relaxed">
-              Authorized compliance gateway for departmental requisitions, multi-stage approval routing, and COA audit verification.
+            <p className="mt-8 max-w-[34rem] text-[15px] leading-7 text-[#c7dfd0]">
+              CPATS keeps each office working from the same record—from the first requisition to receiving and audit.
             </p>
           </div>
 
-          {/* Institutional Workflow Architecture (Monochromatic Vector Schematic) */}
-          <div className="bg-[#123820]/60 border border-emerald-500/20 rounded-xl p-4 text-xs space-y-3">
-            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
-              Procurement Routing Lifecycle
-            </span>
-            <div className="flex items-center justify-between text-[11px] text-emerald-100/80 font-mono pt-1">
-              <span className="px-2 py-1 bg-emerald-900/60 rounded border border-emerald-500/30">01. Request</span>
-              <span className="text-emerald-500">→</span>
-              <span className="px-2 py-1 bg-emerald-900/60 rounded border border-emerald-500/30">02. Finance</span>
-              <span className="text-emerald-500">→</span>
-              <span className="px-2 py-1 bg-emerald-900/60 rounded border border-emerald-500/30">03. Admin</span>
-              <span className="text-emerald-500">→</span>
-              <span className="px-2 py-1 bg-emerald-900/60 rounded border border-emerald-500/30">04. Asset</span>
-            </div>
-          </div>
-
-          {/* Official Advisory Bulletin */}
-          <div className="bg-[#163824] border-l-2 border-emerald-400 rounded-r-xl p-4 text-xs space-y-1.5">
-            <div className="flex items-center justify-between text-emerald-300 font-bold uppercase tracking-wider text-[10px]">
-              <span>Official System Advisory</span>
-              <span>Q3 Fiscal Cycle</span>
-            </div>
-            <p className="text-emerald-100/80 text-[11px] leading-relaxed">
-              All departmental Purchase Requests (PR) for Q3 supplies must be submitted prior to the Friday 5:00 PM Business Office cut-off.
+          <div className="border-l border-[#9bc9ae]/45 pl-8">
+            <p className="max-w-[15rem] text-sm font-medium leading-6 text-[#dcefe5]">
+              One accountable record, carried across every handoff.
             </p>
-          </div>
-
-          {/* System Governance Tags */}
-          <div className="grid grid-cols-3 gap-2.5 pt-1">
-            <div className="bg-[#123820]/40 border border-emerald-500/15 rounded-lg p-2 text-center">
-              <span className="block text-[9px] text-emerald-300/60 uppercase font-medium">Governance</span>
-              <span className="text-[11px] font-semibold text-emerald-100">6-Stage RBAC</span>
-            </div>
-            <div className="bg-[#123820]/40 border border-emerald-500/15 rounded-lg p-2 text-center">
-              <span className="block text-[9px] text-emerald-300/60 uppercase font-medium">Audit Trail</span>
-              <span className="text-[11px] font-semibold text-emerald-100">QR / 3-Way Match</span>
-            </div>
-            <div className="bg-[#123820]/40 border border-emerald-500/15 rounded-lg p-2 text-center">
-              <span className="block text-[9px] text-emerald-300/60 uppercase font-medium">Legal Compliance</span>
-              <span className="text-[11px] font-semibold text-emerald-100">RA 10173 / COA</span>
-            </div>
-          </div>
-
-        </div>
-
-        {/* 3. Footer: Framed Institutional Legal & Privacy Sub-Card */}
-        <div className="relative z-10 mt-auto pt-4">
-          <div className="bg-[#123820]/50 border border-emerald-500/15 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-[11px]">
-            <div className="space-y-0.5">
-              <span className="block font-bold text-emerald-100/90 text-[11px]">
-                © 2026 DMC College Foundation Inc.
-              </span>
-              <span className="block text-[10px] text-emerald-200/50">
-                Internal Governance &amp; COA Audit Gateway
-              </span>
-            </div>
-
-            <button 
-              type="button" 
-              onClick={() => setShowPrivacyModal(true)}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-900/80 hover:bg-emerald-800 border border-emerald-600/40 hover:border-emerald-500/60 text-emerald-200 hover:text-white text-[10px] font-semibold transition cursor-pointer shrink-0 active:scale-95 shadow-2xs"
-            >
-              <svg className="w-3 h-3 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              <span>Data Privacy Undertaking</span>
-            </button>
+            <ol className="mt-8 space-y-7">
+              {WORKFLOW_HANDOFFS.map((handoff, index) => (
+                <li key={handoff.office} className="relative grid grid-cols-[1.75rem_1fr] gap-3">
+                  <span className="absolute -left-[2.3rem] top-1.5 size-2.5 bg-[#9bc9ae] ring-[5px] ring-[#063d2d]" />
+                  <span className="pt-0.5 text-xs tabular-nums text-[#9bc9ae]">{String(index + 1).padStart(2, '0')}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{handoff.office}</p>
+                    <p className="mt-1 text-xs leading-5 text-[#9bc9ae]">{handoff.responsibility}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </div>
         </div>
 
-      </div>
+        <footer className="relative z-10 flex items-end justify-between gap-8 border-t border-white/15 pt-5 text-xs text-[#9bc9ae]">
+          <p>© 2026 DMC College Foundation, Inc.</p>
+          <button
+            type="button"
+            onClick={() => setShowPrivacyModal(true)}
+            className="inline-flex items-center gap-1.5 font-medium text-[#c7dfd0] underline decoration-[#9bc9ae]/50 underline-offset-4 transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#9bc9ae]"
+          >
+            <ShieldCheck className="size-3.5 shrink-0" aria-hidden="true" />
+            Data privacy undertaking
+          </button>
+        </footer>
+      </section>
 
-      {/* ========================================================================= */}
-      {/* RIGHT PANEL: Official Login Card & Authentication Form                   */}
-      {/* ========================================================================= */}
-      <div className="w-full lg:w-[55%] flex flex-col justify-between p-6 sm:p-12 relative">
-        
-        {/* Subtle Background Pattern */}
-        <div 
-          className="absolute inset-0 opacity-[0.015] pointer-events-none"
-          style={{
-            backgroundImage: `radial-gradient(#111827 1px, transparent 1px)`,
-            backgroundSize: '20px 20px'
-          }}
-        />
+      <section className="flex min-h-[100svh] flex-col px-5 py-5 sm:px-10 sm:py-8 xl:px-[clamp(4rem,7vw,8rem)] xl:py-12">
+        <header className="flex items-center justify-between gap-4 border-b border-[#cbd8d1] pb-5 xl:hidden">
+          <BrandMark />
+          <button
+            type="button"
+            onClick={() => setShowPrivacyModal(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[#087443] underline decoration-[#9bc9ae] underline-offset-4"
+          >
+            <ShieldCheck className="size-3.5 shrink-0" aria-hidden="true" />
+            Privacy
+          </button>
+        </header>
 
-        <div className="my-auto max-w-[420px] w-full mx-auto space-y-6">
-          
-          {/* Elevated High-Contrast Card */}
-          <div className="bg-white p-8 sm:p-10 rounded-xl border border-slate-200/90 shadow-xl shadow-slate-200/40 relative">
-            
-            {/* Header Block */}
-            <div className="mb-6">
-              <div className="inline-flex lg:hidden h-10 w-10 rounded-lg bg-[#0B2B18] items-center justify-center font-bold text-white text-xs mb-3">
-                DMC
+        <div className="mx-auto flex w-full max-w-[27rem] flex-1 items-center py-10 sm:py-14 xl:py-8">
+          <div className="w-full">
+            <div className="mb-9">
+              <div className="mb-5 flex items-center gap-3 text-sm font-medium text-[#087443]">
+                <span className="h-px w-8 bg-[#087443]" />
+                Secure staff access
               </div>
-              <h2 className="text-xl font-bold tracking-tight text-slate-900">
-                Institutional Sign In
+              <h2 className="text-[2.4rem] font-semibold leading-none tracking-[-0.055em] text-[#17221e] sm:text-[2.75rem]">
+                Sign in to CPATS
               </h2>
-              <p className="text-xs text-slate-500 mt-1 leading-normal">
-                Access restricted to authorized personnel. Enter your assigned credentials.
+              <p className="mt-4 max-w-[25rem] text-sm leading-6 text-[#507064]">
+                Use the institutional account assigned to your office.
               </p>
             </div>
 
-            {/* Error Feedback Banner */}
             {errorMessage && (
-              <div className="mb-5 p-3.5 bg-rose-50 border-l-4 border-rose-600 rounded-r-lg text-rose-800 text-xs font-medium flex items-start space-x-2.5">
-                <svg className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>{errorMessage}</span>
+              <div role="alert" className="mb-6 border-l-4 border-[#b4233b] bg-[#fff2f3] px-4 py-3 text-sm text-[#7f1528]">
+                <p className="font-semibold">Sign-in failed</p>
+                <p className="mt-1 leading-5">{errorMessage}</p>
               </div>
             )}
 
-            {/* Login Form */}
-            <form onSubmit={handleLogin} className="space-y-4">
-              
-              {/* Field 1: Email */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Institutional Email
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div className="space-y-2">
+                <label htmlFor="institutional-email" className="block text-sm font-semibold text-[#263a32]">
+                  Institutional email
                 </label>
                 <input
+                  id="institutional-email"
                   type="email"
                   required
-                  className="w-full h-11 px-3.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#15803D] focus:ring-2 focus:ring-[#DCFCE7] outline-none transition font-sans"
-                  placeholder="user@dmc.edu.ph"
+                  autoComplete="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="name@dmc.edu.ph"
+                  className="h-12 w-full border border-[#9fb4aa] bg-white px-4 text-sm text-[#17221e] shadow-[0_1px_0_rgba(6,61,45,.05)] outline-none transition-[border-color,box-shadow] placeholder:text-[#80968c] hover:border-[#6f9182] focus:border-[#087443] focus:ring-2 focus:ring-[#9bc9ae]/45"
                 />
               </div>
 
-              {/* Field 2: Password */}
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <label className="block text-xs font-semibold text-slate-700">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <label htmlFor="institutional-password" className="block text-sm font-semibold text-[#263a32]">
                     Password
                   </label>
-                  <button 
+                  <button
                     type="button"
                     onClick={() => setShowSupportModal(true)}
-                    className="text-xs font-semibold text-[#15803D] hover:underline cursor-pointer"
+                    className="text-xs font-semibold text-[#087443] underline decoration-[#9bc9ae] underline-offset-4 transition-colors hover:text-[#063d2d]"
                   >
-                    Forgot Password?
+                    Get sign-in help
                   </button>
                 </div>
-                <input
-                  type="password"
-                  required
-                  className="w-full h-11 px-3.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#15803D] focus:ring-2 focus:ring-[#DCFCE7] outline-none transition font-sans"
-                  placeholder="••••••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    id="institutional-password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Enter your password"
+                    className="h-12 w-full border border-[#9fb4aa] bg-white px-4 pr-12 text-sm text-[#17221e] shadow-[0_1px_0_rgba(6,61,45,.05)] outline-none transition-[border-color,box-shadow] placeholder:text-[#80968c] hover:border-[#6f9182] focus:border-[#087443] focus:ring-2 focus:ring-[#9bc9ae]/45"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    className="absolute inset-y-0 right-0 grid w-12 place-items-center text-[#6f8179] transition-colors hover:bg-[#edf5f0] hover:text-[#063d2d]"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="size-4 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <Eye className="size-4 shrink-0" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
               </div>
 
-              {/* Action CTA Button */}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full h-11 bg-[#15803D] hover:bg-[#166534] disabled:bg-slate-300 text-white font-semibold text-xs tracking-wide rounded-lg transition-colors shadow-sm flex items-center justify-center space-x-2 cursor-pointer active:scale-[0.99]"
+                className="inline-flex h-12 w-full items-center justify-center gap-2 bg-[#087443] px-5 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(6,61,45,.18)] transition-[background-color,transform] hover:bg-[#063d2d] active:translate-y-px disabled:cursor-not-allowed disabled:bg-[#9fb4aa] disabled:shadow-none"
               >
-                <svg className="w-4 h-4 text-emerald-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                <span>{loading ? 'Authenticating Credentials...' : 'Authenticate & Access System'}</span>
+                <LockKeyhole className="size-4 shrink-0" aria-hidden="true" />
+                {loading ? 'Verifying account…' : 'Sign in'}
               </button>
-
             </form>
 
-            {/* Security Notice Footnote */}
-            <div className="mt-6 pt-5 border-t border-slate-100 text-center space-y-1.5">
-              <div className="inline-flex items-center space-x-1.5 text-[11px] font-medium text-slate-500">
-                <svg className="w-3.5 h-3.5 text-[#15803D]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-                <span>Restricted Campus Gateway</span>
-              </div>
-              <p className="text-[10px] text-slate-400 leading-tight max-w-xs mx-auto">
-                Unauthorized access is strictly prohibited. All login attempts and transaction actions are logged under DMC IT Governance Policy.
-              </p>
+            <div className="mt-7 flex items-start gap-2.5 border-t border-[#cbd8d1] pt-5 text-xs leading-5 text-[#637a70]">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[#087443]" aria-hidden="true" />
+              <p>Access is restricted to authorized DMC personnel. Sign-in attempts and procurement actions are recorded.</p>
             </div>
-
           </div>
-
         </div>
 
-        {/* Outer Footer: Separated Administrative Test Profiles Toggle */}
-        <div className="mt-6 text-center">
+        <footer className="mx-auto w-full max-w-[27rem] border-t border-[#cbd8d1] pt-4 xl:max-w-none">
           <button
             type="button"
-            onClick={() => setShowDevProfiles(!showDevProfiles)}
-            className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 underline transition cursor-pointer"
+            onClick={() => setShowDevProfiles((visible) => !visible)}
+            aria-expanded={showDevProfiles}
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#70877d] underline decoration-[#cbd8d1] underline-offset-4 transition-colors hover:text-[#063d2d]"
           >
-            {showDevProfiles ? '✕ Hide Evaluation Profiles' : '⚙ Administrative Evaluation Profiles'}
+            {showDevProfiles ? (
+              <X className="size-3.5 shrink-0" aria-hidden="true" />
+            ) : (
+              <SlidersHorizontal className="size-3.5 shrink-0" aria-hidden="true" />
+            )}
+            {showDevProfiles ? 'Close evaluation profiles' : 'Open evaluation profiles'}
           </button>
 
           {showDevProfiles && (
-            <div className="mt-3 max-w-xl mx-auto p-3 bg-white border border-slate-200 rounded-xl shadow-xs grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {DEMO_PROFILES.map((p) => (
+            <div className="mt-4 grid border-l border-t border-[#cbd8d1] bg-white sm:grid-cols-2 xl:grid-cols-3">
+              {DEMO_PROFILES.map((profile) => (
                 <button
-                  key={p.email}
+                  key={profile.email}
                   type="button"
-                  onClick={() => applyDemoProfile(p.email)}
-                  className="p-2 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-lg text-left transition group cursor-pointer"
+                  onClick={() => applyDemoProfile(profile.email)}
+                  className="border-b border-r border-[#cbd8d1] p-3 text-left transition-colors hover:bg-[#edf5f0] focus-visible:z-10"
                 >
-                  <span className="block text-xs font-bold text-slate-800 group-hover:text-emerald-800 truncate">{p.label}</span>
-                  <span className="text-[10px] font-mono text-slate-400 truncate block">{p.email}</span>
+                  <span className="block truncate text-xs font-semibold text-[#263a32]">{profile.label}</span>
+                  <span className="mt-1 block truncate text-[10px] text-[#70877d]">{profile.email}</span>
                 </button>
               ))}
             </div>
           )}
-        </div>
+        </footer>
+      </section>
 
-      </div>
-
-      {/* ========================================================================= */}
-      {/* MODAL 1: IT SUPPORT & CREDENTIAL RESET MODAL                              */}
-      {/* ========================================================================= */}
       {showSupportModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                Institutional IT Support
-              </h3>
-              <button 
-                onClick={() => setShowSupportModal(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="text-xs text-slate-600 leading-relaxed space-y-3">
-              <p>
-                Self-service password resets are disabled for security compliance. Accounts are issued and maintained directly by the DMC Management Information Systems (MIS) office.
-              </p>
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1 font-mono text-[11px]">
-                <div><strong>Office:</strong> MIS & Systems Center</div>
-                <div><strong>Internal Ext:</strong> Local 104</div>
-                <div><strong>Email:</strong> mis-support@dmc.edu.ph</div>
-              </div>
-            </div>
-            <div className="pt-2 text-right">
-              <button
-                onClick={() => setShowSupportModal(false)}
-                className="px-4 py-2 bg-[#15803D] hover:bg-[#166534] text-white font-semibold text-xs rounded-lg transition cursor-pointer"
-              >
-                Close Guidance
-              </button>
-            </div>
+        <Dialog label="Institutional IT support" onClose={() => setShowSupportModal(false)}>
+          <div className="pr-2">
+            <HelpCircle className="mb-4 size-6 shrink-0 text-[#087443]" aria-hidden="true" />
+            <h3 className="text-xl font-semibold tracking-[-0.03em] text-[#17221e]">Institutional IT support</h3>
+            <p className="mt-3 text-sm leading-6 text-[#507064]">
+              Password resets are handled by the DMC Management Information Systems office.
+            </p>
+            <dl className="mt-5 divide-y divide-[#cbd8d1] border-y border-[#cbd8d1] text-sm text-[#263a32]">
+              <div className="flex justify-between gap-4 py-3"><dt className="text-[#70877d]">Office</dt><dd className="font-semibold text-right">MIS &amp; Systems Center</dd></div>
+              <div className="flex justify-between gap-4 py-3"><dt className="text-[#70877d]">Internal extension</dt><dd className="font-semibold">Local 104</dd></div>
+              <div className="flex justify-between gap-4 py-3"><dt className="text-[#70877d]">Email</dt><dd className="font-semibold">mis-support@dmc.edu.ph</dd></div>
+            </dl>
+            <button type="button" onClick={() => setShowSupportModal(false)} className="mt-6 h-10 bg-[#087443] px-5 text-sm font-semibold text-white hover:bg-[#063d2d]">Close</button>
           </div>
-        </div>
+        </Dialog>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 2: DATA PRIVACY & COMPLIANCE UNDERTAKING MODAL                      */}
-      {/* ========================================================================= */}
       {showPrivacyModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                Data Privacy & Governance Undertaking
-              </h3>
-              <button 
-                onClick={() => setShowPrivacyModal(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer"
-              >
-                ✕
-              </button>
+        <Dialog label="Data privacy and governance undertaking" onClose={() => setShowPrivacyModal(false)}>
+          <div className="pr-2">
+            <ShieldCheck className="mb-4 size-6 shrink-0 text-[#087443]" aria-hidden="true" />
+            <h3 className="text-xl font-semibold tracking-[-0.03em] text-[#17221e]">Data privacy &amp; governance</h3>
+            <div className="mt-4 max-h-64 space-y-4 overflow-y-auto pr-3 text-sm leading-6 text-[#507064]">
+              <p><strong className="text-[#263a32]">Authority to process information.</strong> Under Republic Act No. 10173, requisition records, invoices, and authorization logs are processed for official academic procurement.</p>
+              <p><strong className="text-[#263a32]">Integrity of records.</strong> Purchase requests, proof files, and digital verifications represent institutional transactions subject to Commission on Audit standards.</p>
+              <p><strong className="text-[#263a32]">Audit trail logging.</strong> Operational status transitions are tied to the authenticated account and timestamped in the central ledger.</p>
             </div>
-            <div className="text-xs text-slate-600 leading-relaxed space-y-2.5 max-h-60 overflow-y-auto pr-1">
-              <p>
-                <strong>1. Authority to Process Information:</strong> Pursuant to Republic Act No. 10173 (Data Privacy Act of 2012), all requisition records, vendor invoices, and authorization logs entered into IPMS are processed strictly for official academic procurement purposes.
-              </p>
-              <p>
-                <strong>2. Integrity of Records:</strong> Users affirm that submitted Purchase Requests, attached executive proof files, and digital verifications represent accurate institutional transactions subject to Commission on Audit (COA) standards.
-              </p>
-              <p>
-                <strong>3. Audit Trail Logging:</strong> Every operational status transition is cryptographically bound to the authenticated user account and timestamped within the central ledger.
-              </p>
-            </div>
-            <div className="pt-2 border-t border-slate-100 text-right">
-              <button
-                onClick={() => setShowPrivacyModal(false)}
-                className="px-4 py-2 bg-[#15803D] hover:bg-[#166534] text-white font-semibold text-xs rounded-lg transition cursor-pointer"
-              >
-                Acknowledge & Close
-              </button>
-            </div>
+            <button type="button" onClick={() => setShowPrivacyModal(false)} className="mt-6 inline-flex h-10 items-center justify-center gap-1.5 bg-[#087443] px-5 text-sm font-semibold text-white hover:bg-[#063d2d]"><CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />Acknowledge</button>
           </div>
-        </div>
+        </Dialog>
       )}
-
-    </div>
+    </main>
   );
 }
