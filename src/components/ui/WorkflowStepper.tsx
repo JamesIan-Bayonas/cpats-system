@@ -16,6 +16,14 @@ const STAGES: Step[] = [
   { id: 'CLOSED', label: '6. COA Audit', roles: 'Internal Audit' },
 ];
 
+function CheckIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3.5 shrink-0"><path d="m5 12.5 4.2 4.2L19 7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function ActiveIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3.5 shrink-0"><circle cx="12" cy="12" r="4" /></svg>;
+}
+
 export function WorkflowStepper({ currentStatus }: { currentStatus: PRStatus }) {
   const getActiveIndex = (status: PRStatus): number => {
     switch (status) {
@@ -41,10 +49,10 @@ export function WorkflowStepper({ currentStatus }: { currentStatus: PRStatus }) 
           return (
             <li key={stage.id} className="flex flex-col border-t-2 pt-2 transition-colors duration-200"
                 style={{ borderColor: isDone ? '#047857' : isCurrent ? '#0ea5e9' : '#e2e8f0' }}>
-              <span className={`text-[10px] font-mono font-bold uppercase ${
+              <span className={`inline-flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase ${
                 isDone ? 'text-emerald-700' : isCurrent ? 'text-sky-700' : 'text-slate-400'
               }`}>
-                {isDone ? '✓ Completed' : isCurrent ? '● Active' : 'Upcoming'}
+                {isDone ? <><CheckIcon /><span>Completed</span></> : isCurrent ? <><ActiveIcon /><span>Active</span></> : <span>Upcoming</span>}
               </span>
               <span className="text-xs font-bold text-slate-800 mt-0.5">{stage.label}</span>
               <span className="text-[10px] text-slate-400">{stage.roles}</span>

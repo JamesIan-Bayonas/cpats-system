@@ -83,6 +83,14 @@ function CheckIcon({ className = 'size-4' }: { className?: string }) {
   );
 }
 
+function ReturnIcon({ className = 'size-4 shrink-0' }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M9 7 4 12l5 5M4 12h10a6 6 0 0 1 6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function ChevronRightIcon({ className = 'size-4' }: { className?: string }) {
   return (
     <svg
@@ -540,9 +548,9 @@ export function ReviewWorkspace({
 export function DecisionButtonGroup({
   value,
   onChange,
-  approveLabel = '✓ Approve',
-  returnLabel = '↶ Return for Correction',
-  declineLabel = '✕ Decline',
+  approveLabel = 'Approve',
+  returnLabel = 'Return for Correction',
+  declineLabel = 'Decline',
 }: {
   value: string;
   onChange: (v: 'APPROVE' | 'RETURN_FOR_CORRECTION' | 'DECLINE') => void;
@@ -569,7 +577,10 @@ export function DecisionButtonGroup({
             : 'border-slate-300 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-900'
         }`}
       >
-        {approveLabel}
+        <span className="inline-flex items-center gap-1.5">
+          <CheckIcon className="size-4 shrink-0" />
+          <span>{approveLabel}</span>
+        </span>
       </button>
 
       <button
@@ -582,7 +593,10 @@ export function DecisionButtonGroup({
             : 'border-slate-300 bg-white text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-900'
         }`}
       >
-        {returnLabel}
+        <span className="inline-flex items-center gap-1.5">
+          <ReturnIcon className="size-4 shrink-0" />
+          <span>{returnLabel}</span>
+        </span>
       </button>
 
       <button
@@ -595,7 +609,10 @@ export function DecisionButtonGroup({
             : 'border-slate-300 bg-white text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-900'
         }`}
       >
-        {declineLabel}
+        <span className="inline-flex items-center gap-1.5">
+          <XIcon className="size-4 shrink-0" />
+          <span>{declineLabel}</span>
+        </span>
       </button>
     </div>
   );
