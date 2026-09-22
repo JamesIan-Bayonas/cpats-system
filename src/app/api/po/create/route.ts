@@ -5,6 +5,7 @@ import { prisma } from '@/shared/prisma';
 import { CreatePOSchema } from '@/validation/po.schema';
 import { authorizeRequest } from '@/shared/rbac';
 import crypto from 'crypto';
+import { dispatchNotificationForAuditLog } from '@/shared/notifications';
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
         data: { status: PRStatus.Awaiting_Check_Issuance }
       });
 
-      await tx.auditLog.create({
+      const auditLog = await tx.auditLog.create({
         data: {
           prId: purchaseRequestId,
           actorId: activeUser.id,
@@ -73,10 +74,12 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      return newPO;
+      return { record: newPO, auditLogId: auditLog.id };
     });
 
-    return NextResponse.json({ success: true, data: transactionResult }, { status: 201 });
+    await dispatchNotificationForAuditLog(transactionResult.auditLogId);
+
+    return NextResponse.json({ success: true, data: transactionResult.record }, { status: 201 });
   } catch (error: unknown) {
     if (error instanceof Error) {
       switch (error.message) {

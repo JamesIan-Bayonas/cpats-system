@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/shared/prisma';
 import { LoginSchema } from '@/validation/auth.schema';
-import { verifyPassword, signToken, SESSION_COOKIE_NAME, AuthUser } from '@/shared/session';
+import { signToken, SESSION_COOKIE_NAME, AuthUser } from '@/shared/session';
+import { verifyPassword } from '@/shared/password';
 
 export async function POST(request: NextRequest) {
   try {
