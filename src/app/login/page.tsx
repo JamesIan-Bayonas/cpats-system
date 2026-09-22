@@ -134,7 +134,7 @@ export default function InstitutionalLoginPage() {
 
   const applyDemoProfile = (profileEmail: string) => {
     setEmail(profileEmail);
-    setPassword('Password123!');
+    setPassword('');
     setErrorMessage(null);
   };
 

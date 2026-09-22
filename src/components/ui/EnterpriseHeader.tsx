@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Role } from '@prisma/client';
+import NotificationBell from '@/components/ui/NotificationBell';
 
 interface EnterpriseHeaderProps {
   activeRole?: Role;
@@ -67,6 +68,8 @@ export default function EnterpriseHeader({ activeRole: propRole, departmentCode:
     { name: 'Business Eval', number: '02', href: '/dashboard/pr/evaluate-business', allowedRoles: [Role.Business_Office] },
     { name: 'Admin Sign-Off', number: '03', href: '/dashboard/pr/approve-admin', allowedRoles: [Role.Admin_Office] },
     { name: 'PO Generation', number: '04A', href: '/dashboard/po/new', allowedRoles: [Role.Purchasing_Office] },
+    { name: 'Track Orders', number: '04T', href: '/dashboard/po/track', allowedRoles: [Role.Purchasing_Office] },
+    { name: 'Monthly Reports', number: '04R', href: '/dashboard/po/reports', allowedRoles: [Role.Purchasing_Office] },
     { name: 'Check Release', number: '04B', href: '/dashboard/po/release-check', allowedRoles: [Role.Business_Office] },
     { name: 'Cargo Intake', number: '05', href: '/dashboard/receiving/new', allowedRoles: [Role.Receiving_Custodian] },
     { name: 'Audit Console', number: '06', href: '/dashboard/audit', allowedRoles: [Role.Global_Auditor] },
@@ -101,7 +104,7 @@ export default function EnterpriseHeader({ activeRole: propRole, departmentCode:
           </Link>
 
           {/* User Session Info & Sign Out Button */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <div className="hidden md:flex items-center space-x-2.5 pr-4 border-r border-slate-200">
               <div className="h-8 w-8 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center">
                 <span className="text-xs font-bold text-emerald-700">{initial}</span>
@@ -111,6 +114,8 @@ export default function EnterpriseHeader({ activeRole: propRole, departmentCode:
                 <span className="block text-[11px] text-slate-400 leading-tight">{displayCode} Department</span>
               </div>
             </div>
+
+            {displayRole !== Role.Requesting_Office && <NotificationBell />}
 
             <button
               onClick={handleLogout}
@@ -124,14 +129,14 @@ export default function EnterpriseHeader({ activeRole: propRole, departmentCode:
 
         {/* Workflow Stage Tabs */}
         {authorizedSteps.length > 1 && (
-          <nav className="flex space-x-1.5 overflow-x-auto pb-3 no-scrollbar" aria-label="Procurement workflow stages">
+          <nav className="flex flex-wrap gap-1.5 pb-3" aria-label="Procurement workflow stages">
             {authorizedSteps.map((step) => {
               const isActive = pathname === step.href;
               return (
                 <Link
                   key={step.href}
                   href={step.href}
-                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                  className={`flex min-h-9 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors sm:flex-none sm:px-3 sm:text-xs ${
                     isActive
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold shadow-2xs'
                       : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'
