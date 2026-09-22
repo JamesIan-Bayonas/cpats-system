@@ -9,9 +9,12 @@ export const ROUTE_ROLE_MAP: Record<string, Role[]> = {
   '/dashboard/pr/evaluate-business': [Role.Business_Office],
   '/dashboard/pr/approve-admin': [Role.Admin_Office],
   '/dashboard/po/new': [Role.Purchasing_Office],
+  '/dashboard/po/track': [Role.Purchasing_Office],
+  '/dashboard/po/reports': [Role.Purchasing_Office],
   '/dashboard/po/release-check': [Role.Business_Office],
   '/dashboard/receiving/new': [Role.Receiving_Custodian],
   '/dashboard/audit': [Role.Global_Auditor],
+  '/dashboard/notifications': [Role.Business_Office, Role.Admin_Office, Role.Purchasing_Office, Role.Receiving_Custodian, Role.Global_Auditor],
 };
 
 export function isRoleAllowed(userRole: Role, allowedRoles: Role | Role[]): boolean {

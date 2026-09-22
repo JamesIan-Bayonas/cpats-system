@@ -13,7 +13,19 @@ export interface AuthUser {
 }
 
 export const SESSION_COOKIE_NAME = 'cpats_session';
-const SECRET_KEY = process.env.SESSION_SECRET || 'cpats-enterprise-governance-secret-key-2026-v2';
+
+function resolveSessionSecret(): string {
+  const configuredSecret = process.env.SESSION_SECRET;
+  if (configuredSecret && configuredSecret.length >= 32) return configuredSecret;
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET must contain at least 32 characters in production.');
+  }
+
+  return 'cpats-development-only-session-secret-change-before-deployment';
+}
+
+const SECRET_KEY = resolveSessionSecret();
 
 // Convert String to Uint8Array for Web Crypto API
 function getSecretKeyBytes(): Uint8Array {
@@ -93,14 +105,6 @@ export async function verifySessionToken(token: string): Promise<AuthUser | null
   } catch {
     return null;
   }
-}
-
-// Node Runtime Password Verification Fallback
-export function verifyPassword(password: string, storedHash: string): boolean {
-  if (storedHash.startsWith('$2b$')) {
-    return password === 'Password123!' || password === 'admin' || password.length >= 6;
-  }
-  return password === 'Password123!';
 }
 
 // Authenticated User Context Extractor
