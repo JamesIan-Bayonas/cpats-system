@@ -3,6 +3,7 @@ import { PRStatus, Role } from '@prisma/client';
 import { prisma } from '@/shared/prisma';
 import { BusinessEvaluationSchema } from '@/validation/business.schema';
 import { authorizeRequest } from '@/shared/rbac';
+import { dispatchNotificationForAuditLog } from '@/shared/notifications';
 
 export async function POST(request: NextRequest) {
   try {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
         data: { status: nextState }
       });
 
-      await tx.auditLog.create({
+      const auditLog = await tx.auditLog.create({
         data: {
           prId: prId,
           actorId: activeUser.id,
@@ -66,10 +67,12 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      return updatedRequest;
+      return { record: updatedRequest, auditLogId: auditLog.id };
     });
 
-    return NextResponse.json({ success: true, data: transactionResult }, { status: 200 });
+    await dispatchNotificationForAuditLog(transactionResult.auditLogId);
+
+    return NextResponse.json({ success: true, data: transactionResult.record }, { status: 200 });
   } catch (error: unknown) {
     console.error("CRITICAL REQUISITION EVALUATION FAILURE:", error);
     return NextResponse.json({ success: false, error: "Critical Execution Fault during state mutation." }, { status: 500 });

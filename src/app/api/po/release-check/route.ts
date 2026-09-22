@@ -4,6 +4,7 @@ import { PRStatus, Role, PaymentType } from '@prisma/client';
 import { prisma } from '@/shared/prisma';
 import { ReleaseCheckSchema } from '@/validation/check.schema';
 import { authorizeRequest } from '@/shared/rbac';
+import { dispatchNotificationForAuditLog } from '@/shared/notifications';
 
 export async function POST(request: NextRequest) {
   try {
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
         ? `Financial Clearance Authorized under CREDIT / CHARGE TERMS. Billing statement breakdown verified.${amountFormatted} Ready for cargo delivery.`
         : `Financial Check Released. Check Number Reference: [${checkNumber}]. Billing statement breakdown verified.${amountFormatted} Allocation balance drawn.`;
 
-      await tx.auditLog.create({
+      const auditLog = await tx.auditLog.create({
         data: {
           prId: targetPO.purchaseRequestId,
           actorId: activeUser.id,
@@ -95,10 +96,12 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      return updatedPO;
+      return { record: updatedPO, auditLogId: auditLog.id };
     });
 
-    return NextResponse.json({ success: true, data: transactionResult }, { status: 200 });
+    await dispatchNotificationForAuditLog(transactionResult.auditLogId);
+
+    return NextResponse.json({ success: true, data: transactionResult.record }, { status: 200 });
   } catch (error: unknown) {
     if (error instanceof Error) {
       switch (error.message) {

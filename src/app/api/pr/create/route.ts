@@ -4,6 +4,7 @@ import { PRStatus, Role } from '@prisma/client';
 import { prisma } from '@/shared/prisma';
 import { CreatePRSchema } from '@/validation/pr.schema';
 import { authorizeRequest } from '@/shared/rbac';
+import { dispatchNotificationForAuditLog } from '@/shared/notifications';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      await tx.auditLog.create({
+      const auditLog = await tx.auditLog.create({
         data: {
           prId: newPR.id,
           actorId: activeUser.id,
@@ -52,10 +53,12 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return newPR;
+      return { record: newPR, auditLogId: auditLog.id };
     });
 
-    return NextResponse.json({ success: true, data: executionResult }, { status: 201 });
+    await dispatchNotificationForAuditLog(executionResult.auditLogId);
+
+    return NextResponse.json({ success: true, data: executionResult.record }, { status: 201 });
   } catch (error: unknown) {
     console.error("CRITICAL BACKEND FAILURE:", error);
     return NextResponse.json({ success: false, error: "Internal Server Execution Failure" }, { status: 500 });

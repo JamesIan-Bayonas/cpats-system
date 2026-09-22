@@ -3,23 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PRStatus, Role } from '@prisma/client';
 import { prisma } from '@/shared/prisma'; 
 import { ReviewPRSchema } from '@/validation/review.schema';
+import { authorizeRequest } from '@/shared/rbac';
+import { dispatchNotificationForAuditLog } from '@/shared/notifications';
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. SECURITY CONTEXT ENFORCEMENT (Aligned with Seeded Admin Profile)
-    const activeUser: { id: string; role: Role; departmentId: string } = {
-      id: "admin-approver-uuid-static-789",
-      role: Role.Admin_Office, 
-      departmentId: "administration-dept-uuid-hq"
-    };
-
-    // Role Guard
-    if (activeUser.role !== Role.Admin_Office) {
-      return NextResponse.json(
-        { success: false, error: "FORBIDDEN: Access restricted to Admin Office profiles." },
-        { status: 403 }
-      );
-    }
+    const auth = await authorizeRequest(request, Role.Admin_Office);
+    if (!auth.success) return auth.response;
+    const activeUser = auth.user;
 
     // 2. PAYLOAD VALIDATION
     const rawBody = await request.json();
@@ -72,7 +63,7 @@ export async function POST(request: NextRequest) {
       });
 
       // Write entry to immutable audit log
-      await tx.auditLog.create({
+      const auditLog = await tx.auditLog.create({
         data: {
           prId: updatedPR.id,
           actorId: activeUser.id,
@@ -82,11 +73,13 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      return updatedPR;
+      return { record: updatedPR, auditLogId: auditLog.id };
     });
 
+    await dispatchNotificationForAuditLog(executionResult.auditLogId);
+
     return NextResponse.json(
-      { success: true, data: executionResult },
+      { success: true, data: executionResult.record },
       { status: 200 }
     );
 
