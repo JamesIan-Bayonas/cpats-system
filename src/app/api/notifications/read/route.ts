@@ -14,8 +14,8 @@ export async function POST(request: NextRequest) {
 
   const result = await prisma.notification.updateMany({
     where: validation.data.all
-      ? { recipientId: auth.user.id, readAt: null }
-      : { id: validation.data.notificationId, recipientId: auth.user.id, readAt: null },  
+      ? { recipientId: auth.user.id, readAt: null, trashedAt: null }
+      : { id: validation.data.notificationId, recipientId: auth.user.id, readAt: null, trashedAt: null },
     data: { readAt: new Date() },
   });
   return NextResponse.json({ success: true, data: { updated: result.count } });

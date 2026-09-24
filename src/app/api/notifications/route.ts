@@ -10,18 +10,27 @@ export async function GET(request: NextRequest) {
   const auth = await authorizeRequest(request, NOTIFIED_ROLES);
   if (!auth.success) return auth.response;
 
-  const validation = NotificationListSchema.safeParse({ limit: request.nextUrl.searchParams.get('limit') || undefined });
+  const validation = NotificationListSchema.safeParse({
+    limit: request.nextUrl.searchParams.get('limit') || undefined,
+    view: request.nextUrl.searchParams.get('view') || undefined,
+  });
   if (!validation.success) return NextResponse.json({ success: false, errors: validation.error.format() }, { status: 422 });
 
-  const [notifications, unreadCount] = await Promise.all([
+  await prisma.notification.deleteMany({
+    where: { recipientId: auth.user.id, trashedAt: { not: null }, purgeAfter: { lte: new Date() } },
+  });
+
+  const inTrash = validation.data.view === 'trash';
+  const [notifications, unreadCount, trashCount] = await Promise.all([
     prisma.notification.findMany({
-      where: { recipientId: auth.user.id },
+      where: { recipientId: auth.user.id, trashedAt: inTrash ? { not: null } : null },
       orderBy: { createdAt: 'desc' },
       take: validation.data.limit,
-      select: { id: true, title: true, message: true, actionPath: true, readAt: true, createdAt: true },
+      select: { id: true, title: true, message: true, actionPath: true, readAt: true, trashedAt: true, purgeAfter: true, createdAt: true },
     }),
-    prisma.notification.count({ where: { recipientId: auth.user.id, readAt: null } }),
+    prisma.notification.count({ where: { recipientId: auth.user.id, readAt: null, trashedAt: null } }),
+    prisma.notification.count({ where: { recipientId: auth.user.id, trashedAt: { not: null } } }),
   ]);
 
-  return NextResponse.json({ success: true, data: { notifications, unreadCount } });
+  return NextResponse.json({ success: true, data: { notifications, unreadCount, trashCount } });
 }
