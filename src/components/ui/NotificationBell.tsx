@@ -3,21 +3,16 @@
 import { Bell, CheckCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-
-interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  actionPath: string;
-  readAt: string | null;
-  createdAt: string;
-}
+import NotificationDetailDialog, { type NotificationItem } from './NotificationDetailDialog';
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const selectedItem = items.find((item) => item.id === selectedId) ?? null;
 
   const loadNotifications = async () => {
     try {
@@ -62,12 +57,25 @@ export default function NotificationBell() {
   const markRead = async (id: string) => {
     const item = items.find((candidate) => candidate.id === id);
     if (item?.readAt) return;
-    await fetch('/api/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notificationId: id }) });
+    const response = await fetch('/api/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notificationId: id }) });
+    if (!response.ok) throw new Error('Unable to mark notification as read.');
     setItems((current) => current.map((candidate) => candidate.id === id ? { ...candidate, readAt: new Date().toISOString() } : candidate));
     setUnreadCount((count) => Math.max(0, count - 1));
   };
 
+  const openNotification = async (item: NotificationItem) => {
+    setOpen(false);
+    setSelectedId(item.id);
+    setDetailError(null);
+    try {
+      await markRead(item.id);
+    } catch {
+      setDetailError('This notification opened, but it could not be marked as read. Check your connection and try again.');
+    }
+  };
+
   return (
+    <>
     <div ref={containerRef} className="relative">
       <button
         type="button"
@@ -97,7 +105,7 @@ export default function NotificationBell() {
             {items.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-slate-500">No workflow notifications yet.</p>
             ) : items.map((item) => (
-              <Link key={item.id} href={item.actionPath} onClick={() => { markRead(item.id); setOpen(false); }} className={`block border-b border-slate-100 px-4 py-3 transition-colors hover:bg-slate-50 ${item.readAt ? '' : 'bg-emerald-50/60'}`}>
+              <button type="button" key={item.id} onClick={() => openNotification(item)} className={`block w-full border-b border-slate-100 px-4 py-3 text-left transition-colors hover:bg-slate-50 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-emerald-600 ${item.readAt ? '' : 'bg-emerald-50/60'}`} aria-label={`View details for ${item.title}`}>
                 <div className="flex gap-2">
                   <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : 'bg-emerald-600'}`} />
                   <div className="min-w-0">
@@ -106,12 +114,20 @@ export default function NotificationBell() {
                     <time className="mt-1 block text-[10px] text-slate-400">{new Date(item.createdAt).toLocaleString()}</time>
                   </div>
                 </div>
-              </Link>
+              </button>
             ))}
           </div>
           <Link href="/dashboard/notifications" onClick={() => setOpen(false)} className="block px-4 py-3 text-center text-xs font-bold text-emerald-700 hover:bg-emerald-50">View all and manage email</Link>
         </section>
       )}
     </div>
+    {selectedItem && (
+      <NotificationDetailDialog
+        item={selectedItem}
+        readError={detailError}
+        onClose={() => { setSelectedId(null); setDetailError(null); }}
+      />
+    )}
+    </>
   );
 }
