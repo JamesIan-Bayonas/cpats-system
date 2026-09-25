@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useTransition } from 'react';
-import { Zap, ImageIcon, FileText, Paperclip } from 'lucide-react';
+import { Zap, ImageIcon, FileText } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -14,6 +14,12 @@ interface PurchaseItemState {
   category: string;
   specs: string;
   quantity: number;
+}
+
+interface ReturnFeedbackState {
+  remarks: string | null;
+  createdAt: string;
+  actor: { role: Role };
 }
 
 interface ZodSubErrors {
@@ -37,6 +43,32 @@ const ITEM_CATEGORIES = [
   'Other / Custom Item',
 ];
 
+const parseStoredItems = (payload: unknown): PurchaseItemState[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.flatMap((entry, index) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const itemName = 'itemName' in entry && typeof entry.itemName === 'string'
+      ? entry.itemName.trim()
+      : '';
+    const rawQuantity = 'quantity' in entry ? Number(entry.quantity) : 1;
+    if (!itemName) return [];
+
+    const separatorIndex = itemName.indexOf(' — ');
+    const possibleCategory = separatorIndex >= 0 ? itemName.slice(0, separatorIndex) : itemName;
+    const hasKnownCategory = ITEM_CATEGORIES.includes(possibleCategory);
+
+    return [{
+      id: `returned-item-${index + 1}`,
+      category: hasKnownCategory ? possibleCategory : 'Other / Custom Item',
+      specs: hasKnownCategory
+        ? separatorIndex >= 0 ? itemName.slice(separatorIndex + 3) : ''
+        : itemName,
+      quantity: Number.isInteger(rawQuantity) && rawQuantity > 0 ? rawQuantity : 1,
+    }];
+  });
+};
+
 const formatFileSize = (bytes: number | null) => {
   if (bytes === null) return null;
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -49,6 +81,11 @@ export default function NewPurchaseRequestPage() {
 
   const [activeUser, setActiveUser] = useState<AuthUser | null>(null);
   const [userLoading, setUserLoading] = useState<boolean>(true);
+  const [returnedRequestId, setReturnedRequestId] = useState<string | null>(null);
+  const [sourceDeclineId, setSourceDeclineId] = useState<string | null>(null);
+  const [evaluatorFeedback, setEvaluatorFeedback] = useState<ReturnFeedbackState | null>(null);
+  const [correctionLoadFailed, setCorrectionLoadFailed] = useState(false);
+  const allowedTemplateNavigationRef = useRef<string | null>(null);
 
   // Form States
   const [justification, setJustification] = useState<string>('');
@@ -69,15 +106,82 @@ export default function NewPurchaseRequestPage() {
   const [fieldErrors, setFieldErrors] = useState<ZodFormErrors | null>(null);
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => res.json())
-      .then((res) => {
-        if (res.success && res.data) {
-          setActiveUser(res.data);
+    let cancelled = false;
+
+    const query = new URLSearchParams(window.location.search);
+    const returnId = query.get('returnId');
+    const declineId = query.get('declineId');
+    const templateNavigation = returnId
+      ? `return:${returnId}`
+      : declineId ? `decline:${declineId}` : null;
+
+    if (templateNavigation && allowedTemplateNavigationRef.current !== templateNavigation) {
+      const pendingNavigation = sessionStorage.getItem('cpats:request-template-navigation');
+      sessionStorage.removeItem('cpats:request-template-navigation');
+      if (pendingNavigation !== templateNavigation) {
+        window.location.replace('/dashboard/pr/new');
+        return;
+      }
+      allowedTemplateNavigationRef.current = templateNavigation;
+    }
+
+    const loadWorkspace = async () => {
+      try {
+        const authResponse = await fetch('/api/auth/me');
+        const authResult = await authResponse.json();
+        if (!authResponse.ok || !authResult.success || !authResult.data) {
+          throw new Error('Failed to verify active institutional session.');
         }
-      })
-      .catch(() => setSystemError('Failed to verify active institutional session.'))
-      .finally(() => setUserLoading(false));
+        if (cancelled) return;
+        setActiveUser(authResult.data);
+
+        if ((!returnId && !declineId) || authResult.data.role !== Role.Requesting_Office) return;
+
+        const sourceResponse = await fetch(
+          returnId
+            ? `/api/pr/return-correction?prId=${encodeURIComponent(returnId)}`
+            : `/api/pr/declined-template?prId=${encodeURIComponent(declineId!)}`
+        );
+        const sourceResult = await sourceResponse.json();
+        if (!sourceResponse.ok || !sourceResult.success || !sourceResult.data) {
+          if (!cancelled) {
+            setCorrectionLoadFailed(true);
+            setSystemError(sourceResult.error || 'Unable to load this request.');
+          }
+          return;
+        }
+        if (cancelled) return;
+
+        const returnedItems = parseStoredItems(sourceResult.data.itemsPayload);
+        if (returnId) setReturnedRequestId(sourceResult.data.id);
+        if (declineId) setSourceDeclineId(sourceResult.data.id);
+        setJustification(sourceResult.data.justification || '');
+        setItems(returnedItems.length > 0 ? returnedItems : [
+          { id: 'returned-item-1', category: 'Monitors & Displays', specs: '', quantity: 1 },
+        ]);
+        setIsDirectPoBypass(Boolean(sourceResult.data.isDirectPoBypass));
+        setAdminProofFilePath(sourceResult.data.adminProofFilePath || '');
+        setEvaluatorFeedback(sourceResult.data.returnFeedback || sourceResult.data.feedback || null);
+
+        if (sourceResult.data.adminProofFilePath) {
+          const storedPath = String(sourceResult.data.adminProofFilePath);
+          const storedName = storedPath.split('/').pop() || 'Executive approval document';
+          setAttachedFileName(decodeURIComponent(storedName));
+          setAttachedFileIsImage(/\.(png|jpe?g|webp)$/i.test(storedPath));
+        }
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setSystemError(error instanceof Error ? error.message : 'Failed to load the request workspace.');
+        }
+      } finally {
+        if (!cancelled) setUserLoading(false);
+      }
+    };
+
+    void loadWorkspace();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const clearMemoAttachment = () => {
@@ -181,6 +285,10 @@ export default function NewPurchaseRequestPage() {
 
   const totalPhysicalUnits = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
+  const discardCorrection = () => {
+    window.location.assign('/dashboard/pr/new');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSystemError(null);
@@ -213,17 +321,21 @@ export default function NewPurchaseRequestPage() {
     startTransition(async () => {
       try {
         const payload = {
+          ...(returnedRequestId && { prId: returnedRequestId }),
           justification,
           isDirectPoBypass,
           ...(isDirectPoBypass && { adminProofFilePath }),
           items: formattedPayloadItems,
         };
 
-        const response = await fetch('/api/pr/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        const response = await fetch(
+          returnedRequestId ? '/api/pr/return-correction' : '/api/pr/create',
+          {
+            method: returnedRequestId ? 'PATCH' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }
+        );
 
         const result = await response.json();
 
@@ -274,6 +386,26 @@ export default function NewPurchaseRequestPage() {
     );
   }
 
+  if (correctionLoadFailed) {
+    return (
+      <div className="max-w-lg mx-auto my-12 p-6 bg-white border border-orange-200 rounded-2xl shadow-sm text-center font-sans space-y-4">
+        <div className="w-12 h-12 rounded-full bg-orange-50 text-orange-700 flex items-center justify-center mx-auto text-xl font-bold">
+          !
+        </div>
+        <h2 className="text-base font-bold text-slate-900">Request details unavailable</h2>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          {systemError || 'These request details are no longer available.'}
+        </p>
+        <Link
+          href="/dashboard/pr/track"
+          className="inline-flex min-h-10 items-center justify-center rounded-xl bg-emerald-700 px-5 text-xs font-bold text-white hover:bg-emerald-800"
+        >
+          Return to Department Records
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-28 lg:pb-8 font-sans antialiased text-slate-900">
       {/* Breadcrumb & Header */}
@@ -287,16 +419,22 @@ export default function NewPurchaseRequestPage() {
             Department Requests
           </Link>
           <span>/</span>
-          <span className="text-slate-800 font-semibold truncate">New Requisition</span>
+          <span className="text-slate-800 font-semibold truncate">
+            {returnedRequestId ? 'Correct Returned Request' : sourceDeclineId ? 'New Request from Decline' : 'New Requisition'}
+          </span>
         </nav>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 border-b border-slate-200/80 pb-4 sm:pb-5">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-slate-900">
-              New Purchase Request
+              {returnedRequestId ? 'Modify Returned Request' : sourceDeclineId ? 'New Request from Declined Record' : 'New Purchase Request'}
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5 max-w-2xl leading-relaxed">
-              Submit required departmental equipment or supplies for administrative evaluation and processing.
+              {returnedRequestId
+                ? 'Revise the saved request using the evaluator feedback, then resubmit it for Business Office review.'
+                : sourceDeclineId
+                ? 'Use the declined request as a starting point. Submitting creates a new requisition with a new reference.'
+                : 'Submit required departmental equipment or supplies for administrative evaluation and processing.'}
             </p>
           </div>
 
@@ -324,6 +462,25 @@ export default function NewPurchaseRequestPage() {
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {(returnedRequestId || sourceDeclineId) && evaluatorFeedback && (
+        <div className={`mb-4 rounded-2xl border p-4 shadow-2xs sm:mb-6 sm:p-5 ${returnedRequestId ? 'border-orange-300 bg-orange-50' : 'border-rose-300 bg-rose-50'}`}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <span className={`block text-[10px] font-black uppercase tracking-widest ${returnedRequestId ? 'text-orange-800' : 'text-rose-800'}`}>
+                {returnedRequestId ? 'Required revision note' : 'Decline notice'}
+              </span>
+              <p className={`mt-1 text-xs font-medium leading-relaxed sm:text-sm ${returnedRequestId ? 'text-orange-950' : 'text-rose-950'}`}>
+                &ldquo;{evaluatorFeedback.remarks || 'No specific decision note was provided.'}&rdquo;
+              </p>
+            </div>
+            <span className={`shrink-0 text-[10px] font-semibold ${returnedRequestId ? 'text-orange-800' : 'text-rose-800'}`}>
+              {evaluatorFeedback.actor.role.replace(/_/g, ' ')} ·{' '}
+              {new Date(evaluatorFeedback.createdAt).toLocaleDateString('en-PH')}
+            </span>
+          </div>
         </div>
       )}
 
@@ -801,19 +958,29 @@ export default function NewPurchaseRequestPage() {
                 {isPending ? (
                   <>
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Submitting Request…</span>
+                    <span>{returnedRequestId ? 'Resubmitting Correction…' : 'Submitting Request…'}</span>
                   </>
                 ) : (
-                  <span>Submit Purchase Request</span>
+                  <span>{returnedRequestId ? 'Resubmit Corrected Request' : 'Submit Purchase Request'}</span>
                 )}
               </button>
 
-              <Link
-                href="/dashboard/pr/track"
-                className="w-full min-h-[40px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center cursor-pointer"
-              >
-                Cancel &amp; Return to List
-              </Link>
+              {returnedRequestId || sourceDeclineId ? (
+                <button
+                  type="button"
+                  onClick={discardCorrection}
+                  className="flex min-h-[40px] w-full cursor-pointer items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                >
+                  Discard Changes &amp; Start New Request
+                </button>
+              ) : (
+                <Link
+                  href="/dashboard/pr/track"
+                  className="w-full min-h-[40px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center cursor-pointer"
+                >
+                  Cancel &amp; Return to List
+                </Link>
+              )}
             </div>
 
             <div className="pt-2 text-center border-t border-slate-100">
@@ -837,12 +1004,22 @@ export default function NewPurchaseRequestPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Link
-                href="/dashboard/pr/track"
-                className="min-h-[44px] px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl flex items-center justify-center transition cursor-pointer"
-              >
-                Cancel
-              </Link>
+              {returnedRequestId || sourceDeclineId ? (
+                <button
+                  type="button"
+                  onClick={discardCorrection}
+                  className="flex min-h-[44px] cursor-pointer items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                >
+                  Discard
+                </button>
+              ) : (
+                <Link
+                  href="/dashboard/pr/track"
+                  className="min-h-[44px] px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl flex items-center justify-center transition cursor-pointer"
+                >
+                  Cancel
+                </Link>
+              )}
 
               <button
                 type="submit"
@@ -852,10 +1029,10 @@ export default function NewPurchaseRequestPage() {
                 {isPending ? (
                   <>
                     <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Sending…</span>
+                    <span>{returnedRequestId ? 'Resubmitting…' : 'Sending…'}</span>
                   </>
                 ) : (
-                  <span>Submit PR</span>
+                  <span>{returnedRequestId ? 'Resubmit' : 'Submit PR'}</span>
                 )}
               </button>
             </div>

@@ -112,9 +112,12 @@ export default function BusinessOfficeEvaluationPage() {
   const handleEvaluationSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSystemError(null); setFieldErrors(null); setSuccessMessage(null); setShowOperationStateModal(false);
     if (!activeUser || activeUser.role !== Role.Business_Office) { setSystemError('Only Business Office personnel can evaluate Purchase Requests.'); return; }
+    const selectedPR = activeQueue.find((req) => req.id === targetPrId);
+    if (!selectedPR || selectedPR.status !== PRStatus.Pending_Business_Approval) {
+      setSystemError('This requisition is in decision history and cannot receive another Business Office evaluation.'); return;
+    }
     if (!necessityVerified || !budgetAvailable) { setSystemError('Please confirm both verification checks before recording your decision.'); return; }
     if (!evaluationAction) { setSystemError('Please select an evaluation action (Approve, Return for Correction, or Decline).'); return; }
-    const selectedPR = activeQueue.find((req) => req.id === targetPrId);
     const finalRemarks = evaluationAction === 'APPROVE'
       ? (selectedPR?.isDirectPoBypass ? 'Fast-Track Logged: Verified with attached Executive Pre-Approved Letter. Budget allocation recorded.' : 'Approved by Business Office. Necessity and budget allocation verified.') : remarks;
     if (evaluationAction !== 'APPROVE' && finalRemarks.trim().length < 5) {
@@ -157,6 +160,7 @@ export default function BusinessOfficeEvaluationPage() {
     dateLabel: new Date(task.createdAt).toLocaleDateString(), justificationPreview: task.justification,
   }));
   const selectedPR = activeQueue.find((req) => req.id === targetPrId);
+  const isDecisionHistoryRecord = selectedPR?.status === PRStatus.Returned_for_Correction || selectedPR?.status === PRStatus.Declined;
   const itemsList: ItemPayloadNode[] = selectedPR && Array.isArray(selectedPR.itemsPayload) ? selectedPR.itemsPayload as ItemPayloadNode[] : [];
   const hasPrices = itemsList.some((item) => typeof item.unitPrice === 'number' && item.unitPrice > 0);
   const calculatedGrandTotal = itemsList.reduce((acc, item) => acc + (item.unitPrice || 0) * item.quantity, 0);
@@ -182,7 +186,9 @@ export default function BusinessOfficeEvaluationPage() {
 
     <ReviewWorkspace queueTitle={primarySegment === 'ACTION_REQUIRED' ? 'Fiscal review queue' : 'Decision history'} tasks={queueTasks}
       loading={queueLoading} emptyMessage={primarySegment === 'ACTION_REQUIRED' ? 'No requisitions are awaiting fiscal evaluation.' : 'No matching records found in decision history.'}
-      selectedId={targetPrId} onSelect={(id) => { setTargetPrId(id); const pr = activeQueue.find((item) => item.id === id); if (pr?.isDirectPoBypass) { setEvaluationAction('APPROVE'); setNecessityVerified(true); setBudgetAvailable(true); } }}>
+      selectionLabel={primarySegment === 'DECISION_HISTORY' ? 'Viewing' : 'In review'}
+      selectedTaskLabel={primarySegment === 'DECISION_HISTORY' ? 'Viewing past decision' : 'Reviewing selected transaction'}
+      selectedId={targetPrId} onSelect={(id) => { setTargetPrId(id); setEvaluationAction(''); setRemarks(''); setNecessityVerified(false); setBudgetAvailable(false); setFieldErrors(null); setSystemError(null); const pr = activeQueue.find((item) => item.id === id); if (pr?.status === PRStatus.Pending_Business_Approval && pr.isDirectPoBypass) { setEvaluationAction('APPROVE'); setNecessityVerified(true); setBudgetAvailable(true); } }}>
 
       <div className="mb-6 space-y-3">
         <div className="grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist" aria-label="Queue view">
@@ -220,6 +226,11 @@ export default function BusinessOfficeEvaluationPage() {
             </div>
           </section>
 
+          {isDecisionHistoryRecord && <section className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 sm:px-6" role="status">
+            <p className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-500">Decision history · Read only</p>
+            <p className="mt-1 text-sm text-slate-700">This requisition was {selectedPR.status === PRStatus.Returned_for_Correction ? 'returned for correction' : 'declined'}. Its recorded details and feedback are available below; no further Business Office decision can be made here.</p>
+          </section>}
+
           {selectedPR.isDirectPoBypass && <section className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
             <div className="flex gap-3"><div className="mt-0.5 text-emerald-700"><Icon path="M13 10V3L4 14h7v7l9-11h-7Z" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-xs font-semibold text-emerald-950">Executive pre-approval on file</h3><span className="rounded-md bg-emerald-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-emerald-800">Fast-track record</span></div><p className="mt-1 text-xs leading-5 text-emerald-800">Verify the budget ledger allocation and confirm dispatch to the Admin Office.</p>{selectedPR.adminProofFilePath && <a href={selectedPR.adminProofFilePath} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 underline underline-offset-2">View executive letter <span aria-hidden>↗</span></a>}</div></div>
           </section>}
@@ -237,14 +248,14 @@ export default function BusinessOfficeEvaluationPage() {
 
           {selectedPR.auditLogs && selectedPR.auditLogs.length > 0 && <details className="group rounded-xl border border-slate-200 bg-white"><summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-xs font-semibold text-slate-800">Workflow history <span className="text-slate-400 transition group-open:rotate-180">⌄</span></summary><div className="border-t border-slate-200 px-5 py-2">{selectedPR.auditLogs.map((log, idx) => <div key={idx} className="grid gap-1 border-b border-slate-100 py-3 last:border-0 sm:grid-cols-[1fr_auto]"><p className="text-xs text-slate-700"><span className="font-semibold text-slate-900">{log.newState.replace(/_/g, ' ')}</span>{log.remarks ? ` — ${log.remarks}` : ''}</p><p className="text-[10px] text-slate-400 sm:text-right">{log.actor.email}<br />{new Date(log.createdAt).toLocaleString()}</p></div>)}</div></details>}
 
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6"><div className="mb-4 flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">Required controls</p><h3 className="mt-1 text-sm font-semibold text-slate-900">Fiscal verification</h3></div><span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${checksComplete === 2 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{checksComplete} of 2 verified</span></div><div className="space-y-2"><CheckItem id="gate-necessity" checked={necessityVerified} onChange={setNecessityVerified} label="Purchase necessity verified" description="Item specifications and departmental requirements have been reviewed." /><CheckItem id="gate-budget" checked={budgetAvailable} onChange={setBudgetAvailable} label="Budget availability confirmed" description="Funds are available under the department allocation code." /></div></section>
+          {!isDecisionHistoryRecord && <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6"><div className="mb-4 flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">Required controls</p><h3 className="mt-1 text-sm font-semibold text-slate-900">Fiscal verification</h3></div><span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${checksComplete === 2 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{checksComplete} of 2 verified</span></div><div className="space-y-2"><CheckItem id="gate-necessity" checked={necessityVerified} onChange={setNecessityVerified} label="Purchase necessity verified" description="Item specifications and departmental requirements have been reviewed." /><CheckItem id="gate-budget" checked={budgetAvailable} onChange={setBudgetAvailable} label="Budget availability confirmed" description="Funds are available under the department allocation code." /></div></section>}
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"><div className="mb-4"><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">Disposition</p><h3 className="mt-1 text-sm font-semibold text-slate-900">Business Office decision</h3><p className="mt-1 text-xs text-slate-500">Choose the outcome that should be recorded for this requisition.</p></div><DecisionButtonGroup value={evaluationAction} onChange={setEvaluationAction} approveLabel="Approve" returnLabel="Return for correction" declineLabel="Decline" />{fieldErrors?.action?._errors && <FieldError>{fieldErrors.action._errors[0]}</FieldError>}
+          {!isDecisionHistoryRecord && <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"><div className="mb-4"><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">Disposition</p><h3 className="mt-1 text-sm font-semibold text-slate-900">Business Office decision</h3><p className="mt-1 text-xs text-slate-500">Choose the outcome that should be recorded for this requisition.</p></div><DecisionButtonGroup value={evaluationAction} onChange={setEvaluationAction} approveLabel="Approve" returnLabel="Return for correction" declineLabel="Decline" />{fieldErrors?.action?._errors && <FieldError>{fieldErrors.action._errors[0]}</FieldError>}
             {(evaluationAction === 'RETURN_FOR_CORRECTION' || evaluationAction === 'DECLINE') && <div className="mt-5 border-t border-slate-200 pt-5"><FieldLabel>{evaluationAction === 'RETURN_FOR_CORRECTION' ? 'Corrections required' : 'Reason for declining'}</FieldLabel><textarea required rows={4} className={inputClass(!!fieldErrors?.remarks)} placeholder={evaluationAction === 'RETURN_FOR_CORRECTION' ? 'Specify the corrections required…' : 'Document the reason for declining this request…'} value={remarks} onChange={(e) => setRemarks(e.target.value)} />{fieldErrors?.remarks?._errors && <FieldError>{fieldErrors.remarks._errors[0]}</FieldError>}</div>}
-          </section>
+          </section>}
 
-          <input type="hidden" required readOnly value={targetPrId} />{fieldErrors?.prId?._errors && <FieldError>{fieldErrors.prId._errors[0]}</FieldError>}
-          <section className="flex flex-col gap-4 rounded-2xl bg-slate-950 px-5 py-5 text-white sm:flex-row sm:items-center sm:justify-between sm:px-6"><div><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">Final action</p><p className="mt-1 text-sm font-semibold">Record fiscal evaluation</p><p className="mt-1 text-xs text-slate-400">This updates the requisition to the selected workflow state.</p></div><ActionButton type="submit" disabled={isPending}>{isPending ? 'Saving…' : 'Submit evaluation'}</ActionButton></section>
+          {!isDecisionHistoryRecord && <><input type="hidden" required readOnly value={targetPrId} />{fieldErrors?.prId?._errors && <FieldError>{fieldErrors.prId._errors[0]}</FieldError>}
+          <section className="flex flex-col gap-4 rounded-2xl bg-slate-950 px-5 py-5 text-white sm:flex-row sm:items-center sm:justify-between sm:px-6"><div><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">Final action</p><p className="mt-1 text-sm font-semibold">Record fiscal evaluation</p><p className="mt-1 text-xs text-slate-400">This updates the requisition to the selected workflow state.</p></div><ActionButton type="submit" disabled={isPending}>{isPending ? 'Saving…' : 'Submit evaluation'}</ActionButton></section></>}
         </>}
       </form>
     </ReviewWorkspace>

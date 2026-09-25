@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useTransition } from 'react';
-import { ClipboardList } from 'lucide-react';
-import { createPortal } from 'react-dom';
+import { ArrowLeft, ClipboardList } from 'lucide-react';
 import Link from 'next/link';
 import { Role, PRStatus } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
@@ -222,7 +221,7 @@ function AccessDenied() {
 }
 
 // ─── Audit Timeline inside Modal ──────────────────────────────────────────────
-function AuditTimeline({ logs }: { logs: AuditLogNode[] }) {
+function AuditTimeline({ logs, highlightedLogId }: { logs: AuditLogNode[]; highlightedLogId?: string | null }) {
   if (!logs || logs.length === 0) {
     return (
       <p className="text-xs text-slate-400 italic py-2">
@@ -236,7 +235,7 @@ function AuditTimeline({ logs }: { logs: AuditLogNode[] }) {
       {logs.map((log, idx) => {
         const badgeInfo = mapStatusToBadge(log.newState);
         return (
-          <li key={idx} className="relative">
+          <li key={log.id ?? idx} id={log.id ? `audit-${log.id}` : undefined} className={`relative scroll-mt-28 ${log.id === highlightedLogId ? 'rounded-xl ring-2 ring-emerald-500 ring-offset-2' : ''}`}>
             <span className="absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-white bg-[#047857] shadow-sm" />
             <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
               <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
@@ -341,20 +340,20 @@ function StageProgressBar({ status }: { status: PRStatus }) {
   );
 }
 
-// ─── Detail / Audit Modal ─────────────────────────────────────────────────────
-function InspectionModal({
+// ─── Inline Detail / Audit Reader ─────────────────────────────────────────────
+function InspectionPanel({
   node,
-  onDismiss,
+  onBack,
+  highlightedLogId,
 }: {
   node: DepartmentPRNode;
-  onDismiss: () => void;
+  onBack: () => void;
+  highlightedLogId?: string | null;
 }) {
   const badge = mapStatusToBadge(node.status);
   const isReturned = node.status === PRStatus.Returned_for_Correction;
   const isDeclined = node.status === PRStatus.Declined;
   const itemTitle = deriveItemSummaryTitle(node.itemsPayload, node.justification);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLElement>(null);
 
   const feedbackLog = node.auditLogs?.find(
     (log) =>
@@ -363,61 +362,27 @@ function InspectionModal({
       (log.remarks && log.remarks.trim().length > 0)
   );
 
-  // Trap focus on mount
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onDismiss();
-      if (e.key === 'Tab') {
-        const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
-        if (!focusable?.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    document.addEventListener('keydown', handleKey);
-    document.body.style.overflow = 'hidden';
-    closeButtonRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', handleKey);
-      document.body.style.overflow = '';
-      previouslyFocused?.focus();
-    };
-  }, [onDismiss]);
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-stretch justify-center font-sans sm:items-center sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-      aria-describedby="modal-description"
-    >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-slate-950/65"
-        onClick={onDismiss}
-        aria-hidden="true"
-      />
-
-      {/* Modal Panel */}
-      <section ref={panelRef} className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[min(900px,calc(100dvh-3rem))] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-200">
+  return (
+      <section
+        aria-labelledby="inspection-title"
+        aria-describedby="inspection-description"
+        className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+      >
         
         {/* ─── Modal Header ─── */}
         <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1 min-w-0">
+              <button
+                type="button"
+                onClick={onBack}
+                className="mb-3 inline-flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+              >
+                <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
+                Records
+              </button>
               <h3
-                id="modal-title"
+                id="inspection-title"
                 className="text-sm sm:text-base font-black text-slate-900 leading-snug"
               >
                 Requisition Progress &amp; Audit Trail
@@ -425,24 +390,15 @@ function InspectionModal({
               <p className="text-[10px] sm:text-[11px] font-mono text-slate-400 truncate">
                 {node.id}
               </p>
-              <p id="modal-description" className="sr-only">
+              <p id="inspection-description" className="sr-only">
                 Procurement stage and official decision history for this requisition.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onDismiss}
-              ref={closeButtonRef}
-              className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-xl text-sm font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-              aria-label="Close modal"
-            >
-              ✕
-            </button>
           </div>
         </div>
 
-        {/* ─── Scrollable Modal Body ─── */}
-        <div className="flex-1 touch-pan-y space-y-6 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6">
+        {/* ─── Detail Body ─── */}
+        <div className="space-y-6 px-4 py-5 sm:px-6 sm:py-6">
 
           {/* Evaluator Feedback Alert (Returned / Declined) */}
           {(isReturned || isDeclined) && (
@@ -495,6 +451,28 @@ function InspectionModal({
                 <p className="text-xs italic text-slate-500">
                   No specific evaluation remarks have been logged.
                 </p>
+              )}
+
+              {isReturned && (
+                <Link
+                  href={`/dashboard/pr/new?returnId=${encodeURIComponent(node.id)}`}
+                  onClick={() => sessionStorage.setItem('cpats:request-template-navigation', `return:${node.id}`)}
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 text-xs font-bold text-white shadow-sm transition hover:bg-orange-700 active:scale-[0.99]"
+                >
+                  <FileTextIcon className="size-4 shrink-0" />
+                  Modify returned request
+                </Link>
+              )}
+
+              {isDeclined && (
+                <Link
+                  href={`/dashboard/pr/new?declineId=${encodeURIComponent(node.id)}`}
+                  onClick={() => sessionStorage.setItem('cpats:request-template-navigation', `decline:${node.id}`)}
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-rose-700 px-4 text-xs font-bold text-white shadow-sm transition hover:bg-rose-800 active:scale-[0.99]"
+                >
+                  <FileTextIcon className="size-4 shrink-0" />
+                  Start new request using these details
+                </Link>
               )}
             </div>
           )}
@@ -555,7 +533,7 @@ function InspectionModal({
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
               Official Decision &amp; Progress History
             </span>
-            <AuditTimeline logs={node.auditLogs || []} />
+            <AuditTimeline logs={node.auditLogs || []} highlightedLogId={highlightedLogId} />
           </div>
         </div>
 
@@ -563,15 +541,14 @@ function InspectionModal({
         <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:py-4">
           <button
             type="button"
-            onClick={onDismiss}
+            onClick={onBack}
             className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#064E3B] text-xs font-bold text-white transition hover:bg-[#047857] active:scale-[0.99]"
           >
-            Close Viewport
+            <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
+            Records
           </button>
         </div>
       </section>
-    </div>,
-    document.body
   );
 }
 
@@ -825,6 +802,34 @@ export default function RequestTrackingPage() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [systemError, setSystemError] = useState<string | null>(null);
   const [activeInspectionNode, setActiveInspectionNode] = useState<DepartmentPRNode | null>(null);
+  const [highlightedLogId, setHighlightedLogId] = useState<string | null>(null);
+  const recordsAreaRef = useRef<HTMLElement>(null);
+  const listScrollPositionRef = useRef(0);
+  const inspectionTriggerRef = useRef<HTMLElement | null>(null);
+
+  const openInspection = (request: DepartmentPRNode) => {
+    setHighlightedLogId(null);
+    listScrollPositionRef.current = window.scrollY;
+    inspectionTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setActiveInspectionNode(request);
+    window.requestAnimationFrame(() => {
+      recordsAreaRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    });
+  };
+
+  const closeInspection = () => {
+    const previousScrollPosition = listScrollPositionRef.current;
+    const previousTrigger = inspectionTriggerRef.current;
+    setActiveInspectionNode(null);
+    setHighlightedLogId(null);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: previousScrollPosition, left: 0, behavior: 'auto' });
+        previousTrigger?.focus({ preventScroll: true });
+      });
+    });
+  };
 
   useEffect(() => {
     const fetchDepartmentRequests = (role: Role, departmentId: string) => {
@@ -837,7 +842,15 @@ export default function RequestTrackingPage() {
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || 'Failed to fetch departmental requests.');
-          setRequests(result.data || []);
+          const departmentRequests: DepartmentPRNode[] = result.data || [];
+          setRequests(departmentRequests);
+          const params = new URLSearchParams(window.location.search);
+          const linkedRequest = departmentRequests.find((item) => item.id === params.get('prId'));
+          if (linkedRequest) {
+            const auditLogId = params.get('auditLogId');
+            setActiveInspectionNode(linkedRequest);
+            setHighlightedLogId(linkedRequest.auditLogs?.some((log) => log.id === auditLogId) ? auditLogId : null);
+          }
         } catch (err: unknown) {
           setSystemError(
             err instanceof Error ? err.message : 'Network interrupt prevented loading requests.'
@@ -857,6 +870,15 @@ export default function RequestTrackingPage() {
       .catch(() => setSystemError('Failed to verify session credentials.'))
       .finally(() => setUserLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!activeInspectionNode) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = highlightedLogId ? document.getElementById(`audit-${highlightedLogId}`) : recordsAreaRef.current;
+      target?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeInspectionNode, highlightedLogId]);
 
   if (userLoading) return <LoadingLedger />;
   if (!activeUser || activeUser.role !== Role.Requesting_Office) return <AccessDenied />;
@@ -896,6 +918,8 @@ export default function RequestTrackingPage() {
 
         <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 font-sans antialiased text-slate-900 space-y-4 sm:space-y-6">
 
+          {!activeInspectionNode && (
+            <>
           {/* ─── Page Header ────────────────────────────────────────────────── */}
           <header className="space-y-3">
             {/* Breadcrumb */}
@@ -1036,8 +1060,15 @@ export default function RequestTrackingPage() {
   ))}
 </div>
           </div>
+            </>
+          )}
 
           {/* ─── Records / Empty State ───────────────────────────────────────── */}
+          <section ref={recordsAreaRef} className="scroll-mt-24" aria-label="Department procurement records">
+          {activeInspectionNode && (
+            <InspectionPanel node={activeInspectionNode} onBack={closeInspection} highlightedLogId={highlightedLogId} />
+          )}
+          <div className={activeInspectionNode ? 'hidden' : undefined}>
           {isPending ? (
             <div className="flex items-center justify-center py-16 gap-3 text-slate-500">
               <div className="w-5 h-5 border-2 border-[#047857] border-t-transparent rounded-full animate-spin" />
@@ -1066,7 +1097,7 @@ export default function RequestTrackingPage() {
                   <MobileRequisitionCard
                     key={req.id}
                     req={req}
-                    onInspect={setActiveInspectionNode}
+                    onInspect={openInspection}
                   />
                 ))}
               </div>
@@ -1180,7 +1211,7 @@ export default function RequestTrackingPage() {
                             <td className="px-5 py-4 text-right whitespace-nowrap">
                               <button
                                 type="button"
-                                onClick={() => setActiveInspectionNode(req)}
+                                onClick={() => openInspection(req)}
                                 className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border shadow-xs active:scale-95 inline-flex items-center justify-center gap-1.5 ${
                                   isReturned
                                     ? 'bg-orange-600 hover:bg-orange-700 text-white border-orange-600'
@@ -1218,6 +1249,8 @@ export default function RequestTrackingPage() {
               </div>
             </>
           )}
+          </div>
+          </section>
 
           {/* ─── Page Footer ─────────────────────────────────────────────────── */}
           <footer className="pb-4 pt-2 flex items-center justify-between text-[10px] text-slate-300 font-medium">
@@ -1227,13 +1260,6 @@ export default function RequestTrackingPage() {
         </main>
       </div>
 
-      {/* ─── Detail / Audit Modal (Portal-level) ─────────────────────────────── */}
-      {activeInspectionNode && (
-        <InspectionModal
-          node={activeInspectionNode}
-          onDismiss={() => setActiveInspectionNode(null)}
-        />
-      )}
     </>
   );
 }
