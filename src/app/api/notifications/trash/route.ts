@@ -4,7 +4,10 @@ import { prisma } from '@/shared/prisma';
 import { authorizeRequest } from '@/shared/rbac';
 import { ManageNotificationTrashSchema } from '@/validation/notification.schema';
 
-const NOTIFIED_ROLES = [Role.Business_Office, Role.Admin_Office, Role.Purchasing_Office, Role.Receiving_Custodian, Role.Global_Auditor];
+const NOTIFIED_ROLES = Object.values(Role);
+const MIN_RETENTION_DAYS = 7;
+const MAX_RETENTION_DAYS = 60;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 export async function POST(request: NextRequest) {
   const auth = await authorizeRequest(request, NOTIFIED_ROLES);
@@ -18,7 +21,20 @@ export async function POST(request: NextRequest) {
   const { action, notificationIds } = validation.data;
   if (action === 'move') {
     const trashedAt = new Date();
-    const purgeAfter = new Date(trashedAt.getTime() + validation.data.retentionDays * 24 * 60 * 60 * 1000);
+    const purgeAfter = validation.data.retentionDays
+      ? new Date(trashedAt.getTime() + validation.data.retentionDays * DAY_IN_MS)
+      : new Date(validation.data.purgeAfter!);
+
+    if (
+      Number.isNaN(purgeAfter.getTime())
+      || purgeAfter.getTime() < trashedAt.getTime() + MIN_RETENTION_DAYS * DAY_IN_MS
+      || purgeAfter.getTime() > trashedAt.getTime() + MAX_RETENTION_DAYS * DAY_IN_MS
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Choose a deletion date between 7 and 60 days from today.' },
+        { status: 422 },
+      );
+    }
     const result = await prisma.notification.updateMany({
       where: { id: { in: notificationIds }, recipientId: auth.user.id, trashedAt: null },
       data: { trashedAt, purgeAfter, readAt: trashedAt },

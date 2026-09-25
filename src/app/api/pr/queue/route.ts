@@ -76,8 +76,26 @@ export async function POST(request: NextRequest) {
 
       case Role.Admin_Office:
         const adminQueue = await prisma.purchaseRequest.findMany({
-          where: { status: PRStatus.Pending_Admin_Approval },
-          orderBy: { createdAt: 'asc' },
+          where: {
+            OR: [
+              { status: PRStatus.Pending_Admin_Approval },
+              {
+                status: {
+                  in: [PRStatus.Returned_for_Correction, PRStatus.Declined]
+                },
+                auditLogs: {
+                  some: {
+                    actor: { role: Role.Admin_Office },
+                    previousState: PRStatus.Pending_Admin_Approval,
+                    newState: {
+                      in: [PRStatus.Returned_for_Correction, PRStatus.Declined]
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          orderBy: { updatedAt: 'desc' },
           include: {
             department: { select: { code: true, name: true } },
             auditLogs: {
