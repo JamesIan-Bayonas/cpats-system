@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowUpRight, Bell, CalendarDays, CircleCheck, FileText, X } from 'lucide-react';
-import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useEffect, useId, useRef } from 'react';
 
@@ -25,8 +25,63 @@ const ACTION_LABELS: Record<string, string> = {
   '/dashboard/audit': 'Open audit record',
 };
 
-function requestReference(message: string): string | null {
+export function notificationRequestReference(message: string): string | null {
   return message.match(/\bPR-[A-Z0-9]+\b/i)?.[0]?.toUpperCase() ?? null;
+}
+
+export function notificationActionLabel(actionPath: string): string {
+  return ACTION_LABELS[actionPath] ?? 'Open this workspace';
+}
+
+export function NotificationDetailBody({
+  item,
+  readError,
+}: {
+  item: NotificationItem;
+  readError?: string | null;
+}) {
+  const reference = notificationRequestReference(item.message);
+
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {reference && (
+          <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+            <FileText className="mt-0.5 size-4 shrink-0 text-slate-500" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-slate-500">Request reference</p>
+              <p className="mt-0.5 break-all text-sm font-bold text-slate-800">{reference}</p>
+            </div>
+          </div>
+        )}
+        <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+          <CalendarDays className="mt-0.5 size-4 shrink-0 text-slate-500" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-slate-500">Received</p>
+            <time className="mt-0.5 block text-sm font-semibold leading-5 text-slate-800" dateTime={item.createdAt}>
+              {new Date(item.createdAt).toLocaleString()}
+            </time>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <p className="text-xs font-semibold text-slate-500">Update</p>
+        <p className="mt-2 break-words text-sm leading-6 text-slate-700">{item.message}</p>
+      </div>
+
+      <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
+        <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+        <span>{item.readAt ? 'Marked as read' : 'Marking as read…'}</span>
+      </div>
+
+      {readError && (
+        <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+          {readError}
+        </p>
+      )}
+    </>
+  );
 }
 
 export default function NotificationDetailDialog({
@@ -38,12 +93,12 @@ export default function NotificationDetailDialog({
   readError?: string | null;
   onClose: () => void;
 }) {
+  const pathname = usePathname();
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
-  const reference = requestReference(item.message);
-  const actionLabel = ACTION_LABELS[item.actionPath] ?? 'Open request workspace';
+  const actionLabel = notificationActionLabel(item.actionPath);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -126,42 +181,7 @@ export default function NotificationDetailDialog({
         </header>
 
         <div className="overflow-y-auto px-5 py-5 sm:px-6">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {reference && (
-              <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
-                <FileText className="mt-0.5 size-4 shrink-0 text-slate-500" aria-hidden="true" />
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold text-slate-500">Request reference</p>
-                  <p className="mt-0.5 break-all text-sm font-bold text-slate-800">{reference}</p>
-                </div>
-              </div>
-            )}
-            <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
-              <CalendarDays className="mt-0.5 size-4 shrink-0 text-slate-500" aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-slate-500">Received</p>
-                <time className="mt-0.5 block text-sm font-semibold leading-5 text-slate-800" dateTime={item.createdAt}>
-                  {new Date(item.createdAt).toLocaleString()}
-                </time>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <p className="text-xs font-semibold text-slate-500">Update</p>
-            <p className="mt-2 break-words text-sm leading-6 text-slate-700">{item.message}</p>
-          </div>
-
-          <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
-            <CircleCheck className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
-            <span>{item.readAt ? 'Marked as read' : 'Marking as read…'}</span>
-          </div>
-
-          {readError && (
-            <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-              {readError}
-            </p>
-          )}
+          <NotificationDetailBody item={item} readError={readError} />
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
@@ -172,14 +192,15 @@ export default function NotificationDetailDialog({
           >
             Close
           </button>
-          <Link
-            href={item.actionPath}
-            onClick={onClose}
-            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-          >
-            {actionLabel}
-            <ArrowUpRight className="size-4 shrink-0" aria-hidden="true" />
-          </Link>
+          {pathname !== item.actionPath && (
+            <a
+              href={item.actionPath}
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            >
+              {actionLabel}
+              <ArrowUpRight className="size-4 shrink-0" aria-hidden="true" />
+            </a>
+          )}
         </footer>
       </section>
     </div>,

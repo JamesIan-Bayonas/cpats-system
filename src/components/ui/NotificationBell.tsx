@@ -105,16 +105,18 @@ export default function NotificationBell() {
             {items.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-slate-500">No workflow notifications yet.</p>
             ) : items.map((item) => (
-              <button type="button" key={item.id} onClick={() => openNotification(item)} className={`block w-full border-b border-slate-100 px-4 py-3 text-left transition-colors hover:bg-slate-50 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-emerald-600 ${item.readAt ? '' : 'bg-emerald-50/60'}`} aria-label={`View details for ${item.title}`}>
-                <div className="flex gap-2">
-                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : 'bg-emerald-600'}`} />
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-800">{item.title}</p>
-                    <p className="mt-1 text-[11px] leading-4 text-slate-500">{item.message}</p>
-                    <time className="mt-1 block text-[10px] text-slate-400">{new Date(item.createdAt).toLocaleString()}</time>
+              <article key={item.id} className={`flex items-start border-b border-slate-100 px-3 py-2 ${item.readAt ? '' : 'bg-emerald-50/60'}`}>
+                <button type="button" onClick={() => openNotification(item)} className="min-w-0 flex-1 rounded-lg px-1 py-1 text-left transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600" aria-label={`View details for ${item.title}`}>
+                  <div className="flex gap-2">
+                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : 'bg-emerald-600'}`} />
+                    <div className="min-w-0">
+                      <p className="break-words text-xs font-bold text-slate-800">{item.title}</p>
+                      <p className="mt-1 break-words text-[11px] leading-4 text-slate-500">{item.message}</p>
+                      <time className="mt-1 block text-[10px] text-slate-400">{new Date(item.createdAt).toLocaleString()}</time>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              </article>
             ))}
           </div>
           <Link href="/dashboard/notifications" onClick={() => setOpen(false)} className="block px-4 py-3 text-center text-xs font-bold text-emerald-700 hover:bg-emerald-50">View all and manage email</Link>

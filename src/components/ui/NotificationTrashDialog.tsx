@@ -1,16 +1,40 @@
 'use client';
 
-import { AlertTriangle, Clock3, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Clock3, Trash2, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useEffect, useId, useRef, useState } from 'react';
 
 export type NotificationRetentionDays = 7 | 14 | 60;
+export type NotificationTrashSchedule = { retentionDays: NotificationRetentionDays } | { purgeAfter: string };
 
 const RETENTION_OPTIONS: Array<{ days: NotificationRetentionDays; label: string; description: string }> = [
   { days: 7, label: '1 week', description: 'Permanently delete 7 days after moving to trash.' },
   { days: 14, label: '2 weeks', description: 'Permanently delete 14 days after moving to trash.' },
   { days: 60, label: '2 months', description: 'Keep more time available for recovery.' },
 ];
+
+const MIN_RETENTION_DAYS = 7;
+const MAX_RETENTION_DAYS = 60;
+
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function toDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function endOfLocalDay(value: string): Date | null {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const result = new Date(year, month - 1, day, 23, 59, 59, 999);
+  return Number.isNaN(result.getTime()) ? null : result;
+}
 
 export default function NotificationTrashDialog({
   mode,
@@ -25,9 +49,10 @@ export default function NotificationTrashDialog({
   busy: boolean;
   error: string | null;
   onClose: () => void;
-  onConfirm: (retentionDays?: NotificationRetentionDays) => void;
+  onConfirm: (schedule?: NotificationTrashSchedule) => void;
 }) {
-  const [retentionDays, setRetentionDays] = useState<NotificationRetentionDays>(14);
+  const [retentionChoice, setRetentionChoice] = useState<NotificationRetentionDays | 'custom'>(14);
+  const [customDate, setCustomDate] = useState(() => toDateInputValue(addDays(new Date(), MIN_RETENTION_DAYS)));
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -73,6 +98,16 @@ export default function NotificationTrashDialog({
 
   const plural = itemCount === 1 ? 'notification' : 'notifications';
   const isPermanent = mode === 'permanent';
+  const now = new Date();
+  const minimumDate = toDateInputValue(addDays(now, MIN_RETENTION_DAYS));
+  const maximumDate = toDateInputValue(addDays(now, MAX_RETENTION_DAYS));
+  const customPurgeAfter = endOfLocalDay(customDate);
+  const scheduledDeletion = retentionChoice === 'custom'
+    ? customPurgeAfter
+    : addDays(now, retentionChoice);
+  const schedule: NotificationTrashSchedule | undefined = retentionChoice === 'custom'
+    ? customPurgeAfter ? { purgeAfter: customPurgeAfter.toISOString() } : undefined
+    : { retentionDays: retentionChoice };
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" role="presentation" onMouseDown={(event) => { if (!busy && event.currentTarget === event.target) onClose(); }}>
@@ -98,13 +133,25 @@ export default function NotificationTrashDialog({
               <legend className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><Clock3 className="size-4 shrink-0 text-emerald-700" aria-hidden="true" />Choose when trash is permanently deleted</legend>
               <div className="mt-3 grid gap-2">
                 {RETENTION_OPTIONS.map((option) => (
-                  <label key={option.days} className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-colors ${retentionDays === option.days ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-                    <input type="radio" name="notification-retention" value={option.days} checked={retentionDays === option.days} onChange={() => setRetentionDays(option.days)} className="mt-1 accent-emerald-700" />
+                  <label key={option.days} className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-colors ${retentionChoice === option.days ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                    <input type="radio" name="notification-retention" value={option.days} checked={retentionChoice === option.days} onChange={() => setRetentionChoice(option.days)} className="mt-1 accent-emerald-700" />
                     <span><span className="block text-sm font-bold text-slate-800">{option.label}</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">{option.description}</span></span>
                   </label>
                 ))}
+                <div className={`rounded-xl border px-4 py-3 transition-colors ${retentionChoice === 'custom' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                  <label className="flex cursor-pointer items-start gap-3" htmlFor="notification-custom-purge-date">
+                    <input type="radio" name="notification-retention" value="custom" checked={retentionChoice === 'custom'} onChange={() => setRetentionChoice('custom')} className="mt-1 accent-emerald-700" />
+                    <span><span className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-800"><CalendarDays className="size-4 shrink-0" aria-hidden="true" />Choose a date</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">Pick a date from 1 week to 2 months from today.</span></span>
+                  </label>
+                  {retentionChoice === 'custom' && (
+                    <div className="mt-3 border-t border-emerald-200 pt-3">
+                      <label htmlFor="notification-custom-purge-date" className="block text-xs font-semibold text-slate-700">Permanent deletion date</label>
+                      <input id="notification-custom-purge-date" type="date" required min={minimumDate} max={maximumDate} value={customDate} onChange={(event) => setCustomDate(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+                    </div>
+                  )}
+                </div>
               </div>
-              <p className="mt-3 text-xs leading-5 text-slate-500">You can restore these notifications from Trash before that date.</p>
+              <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600"><span className="font-semibold text-slate-800">Scheduled deletion:</span> {scheduledDeletion?.toLocaleString() ?? 'Choose a valid date.'} You can restore these notifications before then.</p>
             </fieldset>
           )}
 
@@ -113,7 +160,7 @@ export default function NotificationTrashDialog({
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button type="button" onClick={onClose} disabled={busy} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
-          <button type="button" onClick={() => onConfirm(isPermanent ? undefined : retentionDays)} disabled={busy} className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-semibold text-white disabled:opacity-50 ${isPermanent ? 'bg-rose-700 hover:bg-rose-800' : 'bg-emerald-700 hover:bg-emerald-800'}`}><Trash2 className="size-4 shrink-0" aria-hidden="true" />{busy ? 'Working…' : isPermanent ? 'Delete permanently' : 'Move to trash'}</button>
+          <button type="button" onClick={() => onConfirm(isPermanent ? undefined : schedule)} disabled={busy || (!isPermanent && !schedule)} className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-semibold text-white disabled:opacity-50 ${isPermanent ? 'bg-rose-700 hover:bg-rose-800' : 'bg-emerald-700 hover:bg-emerald-800'}`}><Trash2 className="size-4 shrink-0" aria-hidden="true" />{busy ? 'Working…' : isPermanent ? 'Delete permanently' : 'Move to trash'}</button>
         </footer>
       </section>
     </div>,
