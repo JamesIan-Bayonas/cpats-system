@@ -4,7 +4,7 @@ import { prisma } from '@/shared/prisma';
 import { authorizeRequest } from '@/shared/rbac';
 import { MarkNotificationReadSchema } from '@/validation/notification.schema';
 
-const NOTIFIED_ROLES = [Role.Business_Office, Role.Admin_Office, Role.Purchasing_Office, Role.Receiving_Custodian, Role.Global_Auditor];
+const NOTIFIED_ROLES = Object.values(Role);
 
 export async function POST(request: NextRequest) {
   const auth = await authorizeRequest(request, NOTIFIED_ROLES);
