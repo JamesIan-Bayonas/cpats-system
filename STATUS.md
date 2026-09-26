@@ -13,7 +13,11 @@ For additive features requested by Ma'am Grace or other project proponents, also
 - Responsive behavior checked at phone, tablet, and desktop widths
 - Seeded institutional role accounts with independently hashed passwords
 - In-app workflow notifications for Business, Admin, Purchasing, Receiving, and Audit roles
+- Recoverable notification trash with 1-week, 2-week, or 2-month retention and explicit permanent deletion
 - Optional verified external email delivery, backed by a durable email outbox
+- Returned requisition correction and resubmission with saved inputs, evaluator feedback, ownership checks, and preserved audit history
+- Returned-request correction mode can be discarded from the form or the New Request navigation tab to restore a clean request template
+- Declined requests can seed a new requisition with their saved inputs and decision note; refreshing a populated request form restores the blank New Request page
 
 ## Notification email deployment
 

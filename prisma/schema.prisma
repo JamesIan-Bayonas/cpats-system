@@ -172,11 +172,16 @@ model Notification {
   message          String          @db.Text
   actionPath       String
   readAt           DateTime?
+  archivedAt       DateTime?
+  trashedAt        DateTime?
+  purgeAfter       DateTime?
   emailOutbox      EmailOutbox?
   createdAt        DateTime        @default(now())
 
   @@unique([recipientId, sourceAuditLogId])
   @@index([recipientId, readAt, createdAt])
+  @@index([recipientId, archivedAt, createdAt])
+  @@index([recipientId, trashedAt, purgeAfter])
   @@index([prId])
 }
 
