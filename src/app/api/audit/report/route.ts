@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
         auditLogs: {
           orderBy: { createdAt: 'desc' },
           select: {
+            id: true,
             createdAt: true,
             previousState: true,
             newState: true,

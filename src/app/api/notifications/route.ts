@@ -20,17 +20,22 @@ export async function GET(request: NextRequest) {
     where: { recipientId: auth.user.id, trashedAt: { not: null }, purgeAfter: { lte: new Date() } },
   });
 
-  const inTrash = validation.data.view === 'trash';
-  const [notifications, unreadCount, trashCount] = await Promise.all([
+  const view = validation.data.view;
+  const [notifications, unreadCount, trashCount, archiveCount] = await Promise.all([
     prisma.notification.findMany({
-      where: { recipientId: auth.user.id, trashedAt: inTrash ? { not: null } : null },
+      where: {
+        recipientId: auth.user.id,
+        trashedAt: view === 'trash' ? { not: null } : null,
+        ...(view !== 'trash' && { archivedAt: view === 'archive' ? { not: null } : null }),
+      },
       orderBy: { createdAt: 'desc' },
       take: validation.data.limit,
-      select: { id: true, title: true, message: true, actionPath: true, readAt: true, trashedAt: true, purgeAfter: true, createdAt: true },
+      select: { id: true, prId: true, sourceAuditLogId: true, title: true, message: true, actionPath: true, readAt: true, archivedAt: true, trashedAt: true, purgeAfter: true, createdAt: true },
     }),
-    prisma.notification.count({ where: { recipientId: auth.user.id, readAt: null, trashedAt: null } }),
+    prisma.notification.count({ where: { recipientId: auth.user.id, readAt: null, archivedAt: null, trashedAt: null } }),
     prisma.notification.count({ where: { recipientId: auth.user.id, trashedAt: { not: null } } }),
+    prisma.notification.count({ where: { recipientId: auth.user.id, archivedAt: { not: null }, trashedAt: null } }),
   ]);
 
-  return NextResponse.json({ success: true, data: { notifications, unreadCount, trashCount } });
+  return NextResponse.json({ success: true, data: { notifications, unreadCount, trashCount, archiveCount } });
 }
