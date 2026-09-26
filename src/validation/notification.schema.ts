@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const NotificationListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  view: z.enum(['inbox', 'trash']).default('inbox'),
+  view: z.enum(['inbox', 'archive', 'trash']).default('inbox'),
 });
 
 export const MarkNotificationReadSchema = z.union([
@@ -11,6 +11,10 @@ export const MarkNotificationReadSchema = z.union([
 ]);
 
 const NotificationIdsSchema = z.array(z.string().uuid()).min(1).max(100);
+export const ManageNotificationInboxSchema = z.object({
+  action: z.enum(['archive', 'unarchive', 'markRead', 'markUnread']),
+  notificationIds: NotificationIdsSchema,
+});
 const RetentionDaysSchema = z.union([z.literal(7), z.literal(14), z.literal(60)]);
 const CustomPurgeAfterSchema = z.string().datetime({ offset: true });
 
