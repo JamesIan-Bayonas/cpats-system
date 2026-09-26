@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Role, PRStatus } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
@@ -91,6 +91,7 @@ export default function ReleaseCheckPage() {
   const [systemError, setSystemError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<ZodFormErrors | null>(null);
   const [transactionSuccess, setTransactionSuccess] = useState<string | null>(null);
+  const notificationTargetHandled = useRef(false);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -114,6 +115,14 @@ export default function ReleaseCheckPage() {
       if (response.ok) {
         const awaitingTasks = (resData.data || []).filter((item: AwaitingCheckPRNode) => item.status === PRStatus.Awaiting_Check_Issuance);
         setCheckQueue(awaitingTasks);
+        if (!notificationTargetHandled.current) {
+          notificationTargetHandled.current = true;
+          const targetId = new URLSearchParams(window.location.search).get('prId');
+          if (targetId) {
+            if (awaitingTasks.some((item: AwaitingCheckPRNode) => item.id === targetId)) handleTaskSelection(targetId, awaitingTasks);
+            else setSystemError('This request is no longer awaiting financial clearance. Its workflow status may have changed.');
+          }
+        }
       }
     } catch (err) {
       console.error('Queue sync failed:', err);
@@ -164,8 +173,8 @@ export default function ReleaseCheckPage() {
     });
   };
 
-  const handleTaskSelection = (taskId: string) => {
-    const task = checkQueue.find((t) => t.id === taskId);
+  const handleTaskSelection = (taskId: string, tasks: AwaitingCheckPRNode[] = checkQueue) => {
+    const task = tasks.find((t) => t.id === taskId);
     if (task) {
       const unissuedPO = task.purchaseOrders.find((po) => !po.isCheckIssued);
       if (unissuedPO) {

@@ -745,6 +745,8 @@ function RequisitionEmptyState({
     switch (statusFilter) {
       case 'ACTION_REQUIRED':
         return 'There are no requisitions currently returned for correction.';
+      case 'DECLINED':
+        return 'There are no declined requisitions to review.';
       case 'IN_PROGRESS':
         return 'There are currently no requisitions undergoing review or purchasing.';
       case 'CLOSED':
@@ -896,6 +898,8 @@ export default function RequestTrackingPage() {
     if (statusFilter === 'ALL') return matchesSearch;
     if (statusFilter === 'ACTION_REQUIRED')
       return matchesSearch && req.status === PRStatus.Returned_for_Correction;
+    if (statusFilter === 'DECLINED')
+      return matchesSearch && req.status === PRStatus.Declined;
     if (statusFilter === 'IN_PROGRESS')
       return (
         matchesSearch &&
@@ -909,6 +913,7 @@ export default function RequestTrackingPage() {
   });
 
   const returnedCount = requests.filter((r) => r.status === PRStatus.Returned_for_Correction).length;
+  const declinedCount = requests.filter((r) => r.status === PRStatus.Declined).length;
 
   return (
     <>
@@ -1025,7 +1030,7 @@ export default function RequestTrackingPage() {
 
             {/* Filter Pills */}
             <div
-  className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar"
+  className="flex flex-wrap items-center gap-1.5"
   role="group"
   aria-label="Status filters"
 >
@@ -1035,6 +1040,7 @@ export default function RequestTrackingPage() {
       ? [{ id: 'ACTION_REQUIRED', label: `Action Needed (${returnedCount})` }]
       : []),
     { id: 'IN_PROGRESS', label: 'In Progress' },
+    { id: 'DECLINED', label: `Decline Notice (${declinedCount})` },
     { id: 'CLOSED', label: 'Received & Closed' },
   ].map((pill) => (
     <button
@@ -1045,15 +1051,22 @@ export default function RequestTrackingPage() {
         statusFilter === pill.id
           ? pill.id === 'ACTION_REQUIRED'
             ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+            : pill.id === 'DECLINED'
+            ? 'bg-rose-700 text-white border-rose-700 shadow-sm'
             : 'bg-[#064E3B] text-white border-[#064E3B] shadow-sm'
           : pill.id === 'ACTION_REQUIRED'
           ? 'bg-orange-50 text-orange-800 border-orange-200 hover:bg-orange-100'
+          : pill.id === 'DECLINED'
+          ? 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
           : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
       }`}
       aria-pressed={statusFilter === pill.id}
     >
       {pill.id === 'ACTION_REQUIRED' && (
         <AlertTriangleIcon className="size-3.5 shrink-0" />
+      )}
+      {pill.id === 'DECLINED' && (
+        <FileTextIcon className="size-3.5 shrink-0" />
       )}
       <span>{pill.label}</span>
     </button>

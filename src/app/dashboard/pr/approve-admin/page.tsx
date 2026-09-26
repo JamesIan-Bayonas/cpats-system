@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Role, PRStatus } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
@@ -62,6 +62,16 @@ interface PendingAdminPRNode {
   };
   itemsPayload?: ItemPayloadNode[] | unknown;
   auditLogs?: AuditLogNode[];
+}
+
+function latestAdminDecision(record: PendingAdminPRNode): AuditLogNode | undefined {
+  return record.auditLogs?.find((log) =>
+    log.actor.role === Role.Admin_Office &&
+    log.previousState === PRStatus.Pending_Admin_Approval &&
+    (log.newState === PRStatus.Approved_Awaiting_PO ||
+      log.newState === PRStatus.Returned_for_Correction ||
+      log.newState === PRStatus.Declined),
+  );
 }
 
 function deriveItemSummaryTitle(itemsPayload: unknown): string {
@@ -214,18 +224,21 @@ export default function AdminOfficeApprovalPage() {
 
   // Queue Storage
   const [adminQueue, setAdminQueue] = useState<PendingAdminPRNode[]>([]);
+  const [adminHistory, setAdminHistory] = useState<PendingAdminPRNode[]>([]);
   const [queueLoading, setQueueLoading] = useState<boolean>(true);
   const [primarySegment, setPrimarySegment] = useState<
     'ACTION_REQUIRED' | 'DECISION_HISTORY'
   >('ACTION_REQUIRED');
   const [historySubFilter, setHistorySubFilter] = useState<
-    'ALL' | 'RETURNED' | 'DECLINED'
+    'ALL' | 'APPROVED' | 'RETURNED' | 'DECLINED'
   >('ALL');
 
   // Status Responses
   const [systemError, setSystemError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ZodFormErrors | null>(null);
   const [successStatus, setSuccessStatus] = useState<string | null>(null);
+  const notificationTargetHandled = useRef(false);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -252,25 +265,64 @@ export default function AdminOfficeApprovalPage() {
 
   async function syncAdminWorkspaceQueue(role: Role) {
     try {
-      const response = await fetch('/api/pr/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: role }),
-      });
-
-      const resData = await response.json();
-
-      if (response.ok) {
-        const adminTasks = (resData.data || []).filter(
+      const [queueResult, historyResult] = await Promise.allSettled([
+        fetch('/api/pr/queue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role }),
+        }).then(async (response) => {
+          const result = await response.json();
+          if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load the Admin Office review queue.');
+          return result.data as PendingAdminPRNode[];
+        }),
+        fetch('/api/pr/admin-history', { cache: 'no-store' }).then(async (response) => {
+          const result = await response.json();
+          if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load Admin decision history.');
+          return result.data as PendingAdminPRNode[];
+        }),
+      ]);
+      const adminTasks: PendingAdminPRNode[] = queueResult.status === 'fulfilled'
+        ? (queueResult.value || []).filter(
           (item: PendingAdminPRNode) =>
             item.status === PRStatus.Pending_Admin_Approval ||
             item.status === PRStatus.Returned_for_Correction ||
             item.status === PRStatus.Declined,
-        );
-        setAdminQueue(adminTasks);
+        )
+        : [];
+      const historyTasks = historyResult.status === 'fulfilled' ? historyResult.value || [] : [];
+
+      if (queueResult.status === 'fulfilled') setAdminQueue(adminTasks);
+      else setSystemError(queueResult.reason instanceof Error ? queueResult.reason.message : 'Unable to load the Admin Office review queue.');
+      if (historyResult.status === 'fulfilled') {
+        setAdminHistory(historyTasks);
+        setHistoryError(null);
+      } else setHistoryError(historyResult.reason instanceof Error ? historyResult.reason.message : 'Unable to load Admin decision history.');
+
+      if (!notificationTargetHandled.current) {
+        const targetId = new URLSearchParams(window.location.search).get('prId');
+        if (targetId) {
+          const activeTarget = adminTasks.find((item) => item.id === targetId && item.status === PRStatus.Pending_Admin_Approval);
+          const historicalTarget = historyTasks.find((item) => item.id === targetId);
+          if (activeTarget) {
+            setPrimarySegment('ACTION_REQUIRED');
+            setPrId(activeTarget.id);
+            notificationTargetHandled.current = true;
+          } else if (historicalTarget) {
+            setPrimarySegment('DECISION_HISTORY');
+            setHistorySubFilter('ALL');
+            setPrId(historicalTarget.id);
+            notificationTargetHandled.current = true;
+          } else if (historyResult.status === 'rejected') {
+            setPrimarySegment('DECISION_HISTORY');
+          } else if (queueResult.status === 'fulfilled') {
+            setSystemError('This request has no Admin Office decision history available for this account.');
+            notificationTargetHandled.current = true;
+          }
+        }
       }
     } catch (err) {
       console.error('Admin queue synchronization interrupted:', err);
+      setHistoryError('Unable to load Admin decision history. Please refresh this page.');
     } finally {
       setQueueLoading(false);
     }
@@ -453,17 +505,12 @@ export default function AdminOfficeApprovalPage() {
   const actionRequiredQueue = adminQueue.filter(
     (item) => item.status === PRStatus.Pending_Admin_Approval,
   );
-  const decisionHistoryQueue = adminQueue.filter(
-    (item) =>
-      item.status === PRStatus.Returned_for_Correction ||
-      item.status === PRStatus.Declined,
-  );
+  const decisionHistoryQueue = adminHistory;
   const filteredHistoryQueue = decisionHistoryQueue.filter((item) =>
-    historySubFilter === 'RETURNED'
-      ? item.status === PRStatus.Returned_for_Correction
-      : historySubFilter === 'DECLINED'
-        ? item.status === PRStatus.Declined
-        : true,
+    historySubFilter === 'ALL' || latestAdminDecision(item)?.newState === (
+      historySubFilter === 'APPROVED' ? PRStatus.Approved_Awaiting_PO
+        : historySubFilter === 'RETURNED' ? PRStatus.Returned_for_Correction : PRStatus.Declined
+    ),
   );
   const displayedQueue =
     primarySegment === 'ACTION_REQUIRED'
@@ -473,29 +520,16 @@ export default function AdminOfficeApprovalPage() {
   const queueTasks: QueueTask[] = displayedQueue.map((task) => ({
     id: task.id,
     title: deriveItemSummaryTitle(task.itemsPayload),
-    subtitle:
-      task.status === PRStatus.Returned_for_Correction
-        ? `${task.department?.code || 'OVPA'} • RETURNED`
-        : task.status === PRStatus.Declined
-          ? `${task.department?.code || 'OVPA'} • DECLINED`
-          : task.isDirectPoBypass
-            ? `${task.department?.code || 'OVPA'} • PRE-APPROVED`
-            : task.department?.code || 'OVPA',
+    subtitle: primarySegment === 'DECISION_HISTORY'
+      ? `${task.department?.code || 'OVPA'} • ${latestAdminDecision(task)?.newState === PRStatus.Approved_Awaiting_PO ? 'APPROVED' : latestAdminDecision(task)?.newState === PRStatus.Returned_for_Correction ? 'RETURNED' : 'DECLINED'}`
+      : task.isDirectPoBypass ? `${task.department?.code || 'OVPA'} • PRE-APPROVED` : task.department?.code || 'OVPA',
     dateLabel: new Date(task.createdAt).toLocaleDateString(),
     justificationPreview: task.justification,
   }));
 
-  const selectedPR = adminQueue.find((req) => req.id === prId);
-  const isDecisionHistoryRecord =
-    selectedPR?.status === PRStatus.Returned_for_Correction ||
-    selectedPR?.status === PRStatus.Declined;
-  const adminDecisionLog = selectedPR?.auditLogs?.find(
-    (log) =>
-      log.actor.role === Role.Admin_Office &&
-      log.previousState === PRStatus.Pending_Admin_Approval &&
-      (log.newState === PRStatus.Returned_for_Correction ||
-        log.newState === PRStatus.Declined),
-  );
+  const selectedPR = (primarySegment === 'DECISION_HISTORY' ? adminHistory : adminQueue).find((req) => req.id === prId);
+  const isDecisionHistoryRecord = primarySegment === 'DECISION_HISTORY';
+  const adminDecisionLog = selectedPR ? latestAdminDecision(selectedPR) : undefined;
 
   const itemsList: ItemPayloadNode[] =
     selectedPR && Array.isArray(selectedPR.itemsPayload)
@@ -536,6 +570,7 @@ export default function AdminOfficeApprovalPage() {
       />
 
       {systemError && <ErrorBanner>{systemError}</ErrorBanner>}
+      {primarySegment === 'DECISION_HISTORY' && historyError && <ErrorBanner>{historyError}</ErrorBanner>}
       {successStatus && <SuccessBanner>{successStatus}</SuccessBanner>}
 
       <ReviewWorkspace
@@ -632,17 +667,22 @@ export default function AdminOfficeApprovalPage() {
                 [
                   ['ALL', 'All', decisionHistoryQueue.length],
                   [
+                    'APPROVED',
+                    'Approved',
+                    decisionHistoryQueue.filter((item) => latestAdminDecision(item)?.newState === PRStatus.Approved_Awaiting_PO).length,
+                  ],
+                  [
                     'RETURNED',
                     'Returned',
                     decisionHistoryQueue.filter(
-                      (item) => item.status === PRStatus.Returned_for_Correction,
+                      (item) => latestAdminDecision(item)?.newState === PRStatus.Returned_for_Correction,
                     ).length,
                   ],
                   [
                     'DECLINED',
                     'Declined',
                     decisionHistoryQueue.filter(
-                      (item) => item.status === PRStatus.Declined,
+                      (item) => latestAdminDecision(item)?.newState === PRStatus.Declined,
                     ).length,
                   ],
                 ] as const
@@ -777,11 +817,10 @@ export default function AdminOfficeApprovalPage() {
                 </p>
                 <p className="mt-1 text-[12px] leading-5 text-slate-700">
                   This requisition was{' '}
-                  {selectedPR.status === PRStatus.Returned_for_Correction
-                    ? 'returned for correction'
-                    : 'declined'}
-                  . Its recorded details and decision notes remain available for reference. No
-                  further Admin Office action can be made from this record.
+                  {adminDecisionLog?.newState === PRStatus.Approved_Awaiting_PO ? 'approved'
+                    : adminDecisionLog?.newState === PRStatus.Returned_for_Correction ? 'returned for correction' : 'declined'}
+                  {' '}by the Admin Office. Its current status is {selectedPR.status.replace(/_/g, ' ')}.
+                  Recorded details and decision notes remain available for reference. No further Admin Office action can be made from this history view.
                 </p>
               </section>
             )}
@@ -798,9 +837,8 @@ export default function AdminOfficeApprovalPage() {
                     </p>
                   </div>
                   <span className="w-fit shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-[9px] font-semibold uppercase text-amber-800">
-                    {adminDecisionLog.newState === PRStatus.Returned_for_Correction
-                      ? 'Returned'
-                      : 'Declined'}
+                    {adminDecisionLog.newState === PRStatus.Approved_Awaiting_PO ? 'Approved'
+                      : adminDecisionLog.newState === PRStatus.Returned_for_Correction ? 'Returned' : 'Declined'}
                   </span>
                 </div>
                 <p className="mt-3 border-t border-amber-200/80 pt-3 text-[10px] text-amber-800 break-all">
