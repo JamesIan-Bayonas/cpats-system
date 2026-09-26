@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useTransition } from 'react';
 import { Role, PRStatus } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
 import QRCodeSVG from '@/components/ui/QRCodeSVG';
 
 interface AuditLogEntry {
+  id: string;
   createdAt: string;
   previousState: PRStatus | null;
   newState: PRStatus;
@@ -64,6 +65,10 @@ export default function GlobalAuditorConsolePage() {
   const [selectedSortOrder, setSelectedSortOrder] = useState<'asc' | 'desc'>('desc');
   const [records, setRecords] = useState<RequisitionReportNode[]>([]);
   const [systemAlert, setSystemAlert] = useState<string | null>(null);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [highlightedPrId, setHighlightedPrId] = useState<string | null>(null);
+  const [highlightedAuditLogId, setHighlightedAuditLogId] = useState<string | null>(null);
+  const notificationTargetHandled = useRef(false);
 
   const [activeMediaModal, setActiveMediaModal] = useState<{
     type: 'IMAGE' | 'QR';
@@ -120,7 +125,21 @@ export default function GlobalAuditorConsolePage() {
           throw new Error(result.error || "Analytics runtime encountered a data mapping boundary failure.");
         }
 
-        setRecords(result.data || []);
+        const reportRecords: RequisitionReportNode[] = result.data || [];
+        setRecords(reportRecords);
+        if (!notificationTargetHandled.current) {
+          notificationTargetHandled.current = true;
+          const targetId = new URLSearchParams(window.location.search).get('prId');
+          if (targetId) {
+            const target = reportRecords.find((record) => record.id === targetId);
+            if (target) {
+              setHighlightedPrId(targetId);
+              const auditLogId = new URLSearchParams(window.location.search).get('auditLogId');
+              if (target.auditLogs.some((log) => log.id === auditLogId)) setHighlightedAuditLogId(auditLogId);
+            }
+            else setNotificationError('This notification’s request is not available in the current audit ledger. Refresh or clear the status filter.');
+          }
+        }
       } catch (err: any) {
         setSystemAlert(err.message || "An execution interrupt split connection pools.");
       }
@@ -132,6 +151,15 @@ export default function GlobalAuditorConsolePage() {
       fetchAuthoritativeLedger(activeUser.role);
     }
   }, [selectedStatus, selectedSortOrder]);
+
+  useEffect(() => {
+    if (!highlightedPrId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const surface = window.matchMedia('(min-width: 1024px)').matches ? 'audit-row' : 'audit-record';
+      document.getElementById(`${surface}-${highlightedPrId}`)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [highlightedPrId, records]);
 
   const computeCoa3WayMatch = (node: RequisitionReportNode) => {
     if (node.status === PRStatus.Declined) {
@@ -205,10 +233,10 @@ export default function GlobalAuditorConsolePage() {
         </div>
       </div>
 
-      {systemAlert && (
+      {(systemAlert || notificationError) && (
         <div className="mb-4 sm:mb-6 p-3.5 sm:p-4 bg-rose-50 border-l-4 border-rose-500 rounded-r-lg text-rose-700 text-xs font-bold">
           <span className="block uppercase tracking-wide text-[9px] sm:text-[10px] mb-0.5">System Audit Warning</span>
-          {systemAlert}
+          {systemAlert || notificationError}
         </div>
       )}
 
@@ -261,7 +289,40 @@ export default function GlobalAuditorConsolePage() {
             No system tracking records match the designated verification filters.
           </div>
         ) : (
-          <div className="overflow-x-auto touch-pan-x">
+          <>
+          <div className="space-y-3 p-3 lg:hidden">
+            {records.map((node) => {
+              const coaMatch = computeCoa3WayMatch(node);
+              const report = node.purchaseOrders.flatMap((po) => po.receivingReports || [])[0];
+              return <article key={node.id} id={`audit-record-${node.id}`} className={`min-w-0 scroll-mt-24 rounded-xl border p-4 ${node.id === highlightedPrId ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500' : 'border-slate-200 bg-white'}`}>
+                <p className="break-all font-mono text-[11px] text-slate-500">{node.id}</p>
+                <h2 className="mt-2 break-words text-sm font-bold text-slate-900">{node.department.name} ({node.department.code})</h2>
+                <p className="mt-2 break-words text-xs leading-5 text-slate-700">{node.justification}</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-semibold">
+                  <span className={`rounded-md border px-2 py-1 ${coaMatch.badge}`}>{coaMatch.label}</span>
+                  <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">{node.status.replace(/_/g, ' ')}</span>
+                </div>
+                <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                  <p className="text-[11px] font-bold text-slate-700">Linked purchase orders</p>
+                  {node.purchaseOrders.length === 0 ? <p className="text-xs text-slate-500">Unbound</p> : node.purchaseOrders.map((po) => <div key={po.poNumber} className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="break-all font-mono font-semibold text-indigo-700">{po.poNumber}</span>
+                    <span>{po.isCheckIssued ? 'Cleared' : 'Awaiting clearance'}</span>
+                    {po.qrCodeToken && <button type="button" onClick={() => setActiveMediaModal({ type: 'QR', title: `QR Token Badge: ${po.poNumber}`, payload: po.qrCodeToken! })} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-slate-200 px-3 text-slate-700"><QrCodeIcon />View QR Token</button>}
+                  </div>)}
+                  {report ? <button type="button" onClick={() => setActiveMediaModal({ type: 'IMAGE', title: 'Physical Hardware Photo Inspection', payload: report.asssetImageFilePath })} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-emerald-200 px-3 text-emerald-800"><CameraIcon />View Photo</button> : <p className="text-xs text-slate-500">No photo</p>}
+                </div>
+                <details className="mt-3 border-t border-slate-200 pt-3" open={node.id === highlightedPrId}>
+                  <summary className="cursor-pointer text-xs font-bold text-slate-800">Log timeline ({node.auditLogs.length})</summary>
+                  <div className="mt-2 space-y-2">{node.auditLogs.map((log) => <div key={log.id} className={`rounded-lg p-2 text-xs text-slate-700 ${log.id === highlightedAuditLogId ? 'bg-emerald-100 ring-2 ring-emerald-500' : 'bg-slate-50'}`}>
+                    <p className="font-semibold">{log.newState.replace(/_/g, ' ')} · {log.actor.role.replace(/_/g, ' ')}</p>
+                    <p className="mt-1 break-words">{log.remarks || 'No remarks recorded.'}</p>
+                    <time className="mt-1 block text-[10px] text-slate-500">{new Date(log.createdAt).toLocaleString()}</time>
+                  </div>)}</div>
+                </details>
+              </article>;
+            })}
+          </div>
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full border-collapse text-left min-w-[850px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
@@ -279,7 +340,7 @@ export default function GlobalAuditorConsolePage() {
                 {records.map((node) => {
                   const coaMatch = computeCoa3WayMatch(node);
                   return (
-                    <tr key={node.id} className="hover:bg-slate-50/70 transition">
+                    <tr key={node.id} id={`audit-row-${node.id}`} className={`transition ${node.id === highlightedPrId ? 'bg-emerald-50 ring-2 ring-inset ring-emerald-500' : 'hover:bg-slate-50/70'}`}>
                       <td className="p-3 sm:p-4 font-mono text-[10px] sm:text-[11px] text-slate-500 font-semibold whitespace-nowrap">
                         {node.id.substring(0, 13)}...
                       </td>
@@ -364,8 +425,8 @@ export default function GlobalAuditorConsolePage() {
                       </td>
                       <td className="p-3 sm:p-4 max-w-xs">
                         <div className="bg-slate-50 rounded-lg p-2 border border-slate-100 space-y-1.5 max-h-28 overflow-y-auto">
-                          {node.auditLogs.map((log, lIdx) => (
-                            <div key={lIdx} className="text-[9px] sm:text-[10px] border-b border-slate-200/60 pb-1 last:border-none last:pb-0">
+                          {node.auditLogs.map((log) => (
+                            <div key={log.id} className={`text-[9px] sm:text-[10px] border-b border-slate-200/60 pb-1 last:border-none last:pb-0 ${log.id === highlightedAuditLogId ? 'rounded bg-emerald-100 ring-2 ring-emerald-500' : ''}`}>
                               <div className="flex justify-between font-medium text-slate-400 font-mono text-[8px] sm:text-[9px]">
                                 <span>{new Date(log.createdAt).toLocaleDateString()}</span>
                                 <span className="text-slate-500 font-bold">{log.actor.role}</span>
@@ -383,6 +444,7 @@ export default function GlobalAuditorConsolePage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

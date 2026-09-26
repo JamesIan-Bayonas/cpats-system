@@ -1,7 +1,7 @@
 // src/app/dashboard/po/new/page.tsx
 'use client';
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Role, PRStatus } from '@prisma/client';
 import { AuthUser } from '@/shared/session';
@@ -72,6 +72,7 @@ export default function NewPurchaseOrderPage() {
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<ZodFormErrors | null>(null);
   const [transactionSuccess, setTransactionSuccess] = useState<string | null>(null);
+  const notificationTargetHandled = useRef(false);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -99,6 +100,15 @@ export default function NewPurchaseOrderPage() {
           (item: ApprovedPRQueueNode) => item.status === PRStatus.Approved_Awaiting_PO
         );
         setPurchasingQueue(activeTasks);
+        if (!notificationTargetHandled.current) {
+          notificationTargetHandled.current = true;
+          const targetId = new URLSearchParams(window.location.search).get('prId');
+          if (targetId) {
+            const target = activeTasks.find((item: ApprovedPRQueueNode) => item.id === targetId);
+            if (target) setPurchaseRequestId(target.id);
+            else setRuntimeError('This request is no longer awaiting PO preparation. Its workflow status may have changed.');
+          }
+        }
       }
     } catch (err) {
       console.error('Queue sync failed:', err);

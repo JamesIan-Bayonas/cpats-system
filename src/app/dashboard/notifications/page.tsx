@@ -1,12 +1,14 @@
 'use client';
 
-import { ArchiveRestore, ArrowLeft, ArrowUpRight, Bell, CheckCheck, Clock3, Inbox, Link2, MailCheck, ShieldCheck, Trash2, Unlink } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, ArrowUpRight, Bell, CheckCheck, Clock3, Inbox, Link2, Mail, MailCheck, MailOpen, ShieldCheck, Trash2, Unlink } from 'lucide-react';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import {
   NotificationDetailBody,
   notificationActionLabel,
   notificationActionPath,
+  notificationWorkspaceLabel,
+  notificationWorkspacePath,
   type NotificationItem,
 } from '@/components/ui/NotificationDetailDialog';
 import NotificationTrashDialog, { type NotificationTrashSchedule } from '@/components/ui/NotificationTrashDialog';
@@ -53,19 +55,17 @@ function NotificationInlineReader({
         <NotificationDetailBody item={item} readError={readError} />
       </div>
 
-      <footer className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-4 py-4 sm:flex-row sm:justify-between sm:px-5">
+      <footer className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-4 py-4 sm:flex-row sm:flex-wrap sm:justify-end sm:px-5">
         <button
           type="button"
           onClick={onBack}
           className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
         >
-          Back to notifications
+          Close
         </button>
-        {notificationActionPath(item).startsWith('/dashboard/pr/track') && (
-          <Link href="/dashboard/pr/new" className="inline-flex min-h-11 items-center justify-center rounded-lg border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">
-            Open requester workspace
-          </Link>
-        )}
+        <Link href={notificationWorkspacePath(item)} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-emerald-200 bg-white px-4 text-center text-sm font-semibold text-emerald-800 hover:bg-emerald-50">
+          {notificationWorkspaceLabel(item)}
+        </Link>
         <Link
           href={notificationActionPath(item)}
           className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-4 text-center text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
@@ -82,7 +82,8 @@ export default function NotificationsPage() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [trashCount, setTrashCount] = useState(0);
-  const [activeView, setActiveView] = useState<'inbox' | 'trash'>('inbox');
+  const [archiveCount, setArchiveCount] = useState(0);
+  const [activeView, setActiveView] = useState<'inbox' | 'archive' | 'trash'>('inbox');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [settings, setSettings] = useState<Settings>(emptySettings);
   const [email, setEmail] = useState('');
@@ -97,6 +98,9 @@ export default function NotificationsPage() {
   const [trashBusy, setTrashBusy] = useState(false);
   const [trashError, setTrashError] = useState<string | null>(null);
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
+  const selectedItems = items.filter((item) => selectedIds.includes(item.id));
+  const selectedHasUnread = selectedItems.some((item) => !item.readAt);
+  const selectedHasRead = selectedItems.some((item) => !!item.readAt);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,6 +115,7 @@ export default function NotificationsPage() {
         setItems(notificationResult.data.notifications);
         setUnreadCount(notificationResult.data.unreadCount);
         setTrashCount(notificationResult.data.trashCount);
+        setArchiveCount(notificationResult.data.archiveCount);
       }
       if (settingsResult.success) {
         setSettings(settingsResult.data);
@@ -178,9 +183,17 @@ export default function NotificationsPage() {
   };
 
   const markAllRead = async () => {
-    await apiRequest('/api/notifications/read', 'POST', { all: true });
-    setItems((current) => current.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })));
-    setUnreadCount(0);
+    setSaving(true);
+    setMessage(null);
+    try {
+      await apiRequest('/api/notifications/read', 'POST', { all: true });
+      setItems((current) => current.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })));
+      setUnreadCount(0);
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Notifications could not be marked as read.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const markRead = async (id: string) => {
@@ -188,7 +201,7 @@ export default function NotificationsPage() {
     if (!item?.readAt) {
       await apiRequest('/api/notifications/read', 'POST', { notificationId: id });
       setItems((current) => current.map((entry) => entry.id === id ? { ...entry, readAt: new Date().toISOString() } : entry));
-      setUnreadCount((count) => Math.max(0, count - 1));
+      if (activeView === 'inbox') setUnreadCount((count) => Math.max(0, count - 1));
     }
   };
 
@@ -206,11 +219,30 @@ export default function NotificationsPage() {
     setSelectedIds((current) => current.includes(id) ? current.filter((selectedId) => selectedId !== id) : [...current, id]);
   };
 
-  const changeView = (view: 'inbox' | 'trash') => {
+  const changeView = (view: 'inbox' | 'archive' | 'trash') => {
     setActiveView(view);
     setSelectedIds([]);
     setSelectedId(null);
     setDetailError(null);
+  };
+
+  const manageInbox = async (action: 'archive' | 'unarchive' | 'markRead' | 'markUnread', ids: string[]) => {
+    if (!ids.length || saving) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const result = await apiRequest('/api/notifications/manage', 'POST', { action, notificationIds: ids });
+      setSelectedIds([]);
+      setMessage({
+        type: 'success',
+        text: `${result.updated} notification${result.updated === 1 ? '' : 's'} ${action === 'archive' ? 'archived' : action === 'unarchive' ? 'returned to Inbox' : action === 'markRead' ? 'marked as read' : 'marked as unread'}.`,
+      });
+      await load();
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'The notification action could not be completed.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openTrashDialog = (mode: 'move' | 'permanent', ids: string[]) => {
@@ -281,12 +313,13 @@ export default function NotificationsPage() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.75fr)]">
         <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-5">
-            <div className="flex items-center gap-3"><span className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><Bell className="h-4 w-4" /></span><div><h2 className="text-sm font-bold text-slate-900">Workflow activity</h2><p className="text-xs text-slate-500">{activeView === 'inbox' ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}` : `${trashCount} notification${trashCount === 1 ? '' : 's'} in trash`}</p></div></div>
-            {activeView === 'inbox' && unreadCount > 0 && <button onClick={markAllRead} className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900"><CheckCheck className="h-4 w-4" />Mark all read</button>}
+            <div className="flex items-center gap-3"><span className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><Bell className="h-4 w-4" /></span><div><h2 className="text-sm font-bold text-slate-900">Workflow activity</h2><p className="text-xs text-slate-500">{activeView === 'inbox' ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}` : activeView === 'archive' ? `${archiveCount} archived notification${archiveCount === 1 ? '' : 's'}` : `${trashCount} notification${trashCount === 1 ? '' : 's'} in trash`}</p></div></div>
+            {activeView === 'inbox' && unreadCount > 0 && <button type="button" disabled={saving} onClick={markAllRead} className="flex min-h-10 items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 disabled:opacity-50"><CheckCheck className="h-4 w-4" />Mark all read</button>}
           </div>
 
           <div className="flex border-b border-slate-200 px-4 sm:px-5" role="tablist" aria-label="Notification folders">
             <button type="button" role="tab" aria-selected={activeView === 'inbox'} onClick={() => changeView('inbox')} className={`inline-flex min-h-11 items-center gap-1.5 border-b-2 px-3 text-xs font-bold transition-colors ${activeView === 'inbox' ? 'border-emerald-700 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Inbox className="h-4 w-4" />Inbox</button>
+            <button type="button" role="tab" aria-selected={activeView === 'archive'} onClick={() => changeView('archive')} className={`inline-flex min-h-11 items-center gap-1.5 border-b-2 px-3 text-xs font-bold transition-colors ${activeView === 'archive' ? 'border-emerald-700 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Archive className="h-4 w-4" />Archive{archiveCount > 0 && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{archiveCount}</span>}</button>
             <button type="button" role="tab" aria-selected={activeView === 'trash'} onClick={() => changeView('trash')} className={`inline-flex min-h-11 items-center gap-1.5 border-b-2 px-3 text-xs font-bold transition-colors ${activeView === 'trash' ? 'border-emerald-700 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Trash2 className="h-4 w-4" />Trash{trashCount > 0 && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{trashCount}</span>}</button>
           </div>
 
@@ -308,7 +341,14 @@ export default function NotificationsPage() {
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <span className="text-[11px] text-slate-500">{selectedIds.length} selected</span>
                   {activeView === 'inbox' ? (
-                    <button type="button" onClick={() => openTrashDialog('move', selectedIds)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 text-xs font-bold text-amber-800 hover:bg-amber-50"><Trash2 className="h-3.5 w-3.5" />Move to trash</button>
+                    <>
+                      <button type="button" disabled={saving} onClick={() => manageInbox('archive', selectedIds)} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"><Archive className="size-4" aria-hidden="true" />Archive</button>
+                      <button type="button" disabled={saving} onClick={() => openTrashDialog('move', selectedIds)} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50"><Trash2 className="size-4" aria-hidden="true" />Move to trash</button>
+                      {selectedHasUnread && <button type="button" disabled={saving} onClick={() => manageInbox('markRead', selectedIds)} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"><MailOpen className="size-4" aria-hidden="true" />Mark as read</button>}
+                      {selectedHasRead && <button type="button" disabled={saving} onClick={() => manageInbox('markUnread', selectedIds)} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"><Mail className="size-4" aria-hidden="true" />Mark as unread</button>}
+                    </>
+                  ) : activeView === 'archive' ? (
+                    <button type="button" disabled={saving} onClick={() => manageInbox('unarchive', selectedIds)} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"><ArchiveRestore className="size-4" aria-hidden="true" />Move to Inbox</button>
                   ) : (
                     <>
                       <button type="button" disabled={saving} onClick={() => restoreNotifications(selectedIds)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"><ArchiveRestore className="h-3.5 w-3.5" />Restore</button>
@@ -321,13 +361,19 @@ export default function NotificationsPage() {
           )}
 
           {loading ? <p className="px-5 py-12 text-center text-sm text-slate-500">Loading notifications…</p> : items.length === 0 ? (
-            <div className="px-5 py-14 text-center">{activeView === 'inbox' ? <Bell className="mx-auto h-8 w-8 text-slate-300" /> : <Trash2 className="mx-auto h-8 w-8 text-slate-300" />}<p className="mt-3 text-sm font-semibold text-slate-700">{activeView === 'inbox' ? 'No notifications yet' : 'Trash is empty'}</p><p className="mt-1 text-xs text-slate-500">{activeView === 'inbox' ? 'New work will appear here when it reaches your role.' : 'Notifications moved to trash will remain recoverable here until their scheduled deletion date.'}</p></div>
+            <div className="px-5 py-14 text-center">{activeView === 'inbox' ? <Bell className="mx-auto h-8 w-8 text-slate-300" /> : activeView === 'archive' ? <Archive className="mx-auto h-8 w-8 text-slate-300" /> : <Trash2 className="mx-auto h-8 w-8 text-slate-300" />}<p className="mt-3 text-sm font-semibold text-slate-700">{activeView === 'inbox' ? 'No notifications yet' : activeView === 'archive' ? 'Archive is empty' : 'Trash is empty'}</p><p className="mt-1 text-xs text-slate-500">{activeView === 'inbox' ? 'New work will appear here when it reaches your role.' : activeView === 'archive' ? 'Archived notifications remain available here for reference.' : 'Notifications moved to trash will remain recoverable here until their scheduled deletion date.'}</p></div>
           ) : <div className="divide-y divide-slate-100">{items.map((item) => (
-            <article key={item.id} className={`flex items-start gap-2 px-3 py-3 sm:gap-3 sm:px-4 ${activeView === 'inbox' && !item.readAt ? 'bg-emerald-50/50' : 'bg-white'}`}>
+            <article key={item.id} className={`group flex min-w-0 flex-wrap items-start gap-2 px-3 py-3 transition-colors hover:bg-slate-50 focus-within:bg-slate-50 sm:flex-nowrap sm:gap-3 sm:px-4 ${activeView === 'inbox' && !item.readAt ? 'bg-emerald-50/50' : 'bg-white'}`}>
               <label className="grid size-10 shrink-0 cursor-pointer place-items-center" aria-label={`Select ${item.title}`}><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelection(item.id)} className="size-4 accent-emerald-700" /></label>
-              <button type="button" onClick={() => openNotification(item)} className="min-w-0 flex-1 rounded-lg px-1 py-1.5 text-left transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600" aria-label={`View details for ${item.title}`}>
+              <button type="button" onClick={() => openNotification(item)} className="min-w-0 flex-1 rounded-lg px-1 py-1.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-emerald-600" aria-label={`View details for ${item.title}`}>
                 <div className="flex gap-3"><span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${activeView === 'trash' || item.readAt ? 'bg-slate-200' : 'bg-emerald-600'}`} /><div className="min-w-0"><p className="break-words text-sm font-bold text-slate-800">{item.title}</p><p className="mt-1 break-words text-xs leading-5 text-slate-600">{item.message}</p><div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400"><time>{new Date(item.createdAt).toLocaleString()}</time>{activeView === 'trash' && item.purgeAfter && <span className="inline-flex items-center gap-1 font-medium text-amber-700"><Clock3 className="h-3 w-3" />Deletes {new Date(item.purgeAfter).toLocaleDateString()}</span>}</div></div></div>
               </button>
+              {activeView === 'inbox' && <div className="flex w-full shrink-0 items-center justify-end gap-1 pl-12 transition-opacity sm:w-auto sm:pl-0 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 [@media(hover:none)]:opacity-100" aria-label={`Actions for ${item.title}`}>
+                <button type="button" disabled={saving} onClick={() => manageInbox('archive', [item.id])} className="grid size-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-200 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:opacity-50" aria-label={`Archive ${item.title}`} title="Archive"><Archive className="size-4" aria-hidden="true" /></button>
+                <button type="button" disabled={saving} onClick={() => openTrashDialog('move', [item.id])} className="grid size-10 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-700 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:opacity-50" aria-label={`Move ${item.title} to trash`} title="Move to trash"><Trash2 className="size-4" aria-hidden="true" /></button>
+                <button type="button" disabled={saving} onClick={() => manageInbox(item.readAt ? 'markUnread' : 'markRead', [item.id])} className="grid size-10 place-items-center rounded-lg text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:opacity-50" aria-label={`${item.readAt ? 'Mark as unread' : 'Mark as read'}: ${item.title}`} title={item.readAt ? 'Mark as unread' : 'Mark as read'}>{item.readAt ? <Mail className="size-4" aria-hidden="true" /> : <MailOpen className="size-4" aria-hidden="true" />}</button>
+              </div>}
+              {activeView === 'archive' && <button type="button" disabled={saving} onClick={() => manageInbox('unarchive', [item.id])} className="grid size-10 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50" aria-label={`Move ${item.title} to Inbox`} title="Move to Inbox"><ArchiveRestore className="size-4" aria-hidden="true" /></button>}
               {activeView === 'trash' && (
                 <div className="flex shrink-0 items-center gap-1 pt-1">
                     <button type="button" disabled={saving} onClick={() => restoreNotifications([item.id])} className="grid size-10 place-items-center rounded-lg text-slate-400 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50" aria-label={`Restore ${item.title}`}><ArchiveRestore className="h-4 w-4" /></button>
